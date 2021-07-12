@@ -17,13 +17,13 @@ from typing import Dict, List, Optional
 import logging
 import torch # noqa
 import torch.nn as nn
-from fairseq import search, utils
-from fairseq.data import data_utils
+from fairseq import search
 from fairseq.models import FairseqIncrementalDecoder
 from torch import Tensor
 from fairseq.ngram_repeat_block import NGramRepeatBlock
 
 logger = logging.getLogger(__name__)
+
 
 class WaitkSequenceGenerator(nn.Module):
     def __init__(

@@ -3,7 +3,6 @@
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
-# TODO: add sinkhorn for wait-k seq2seq encoder.
 
 import logging
 from typing import Dict, List, Optional, Tuple
@@ -135,7 +134,7 @@ class SinkhornEncoderModel(FairseqEncoderModel):
         super().__init__(encoder)
         self.output_projection = output_projection
         self.one_pass_decoding = True  # must implement generate()
-    
+
     @staticmethod
     def add_args(parser):
         """Add model-specific arguments to the parser."""

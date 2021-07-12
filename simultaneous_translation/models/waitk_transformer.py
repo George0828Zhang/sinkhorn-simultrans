@@ -13,7 +13,6 @@ from typing import Dict, List, Optional
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from fairseq import checkpoint_utils
 
 from torch import Tensor
@@ -97,19 +96,19 @@ class WaitkTransformerModel(TransformerModel):
             )
         return decoder
 
-    def forward_embeddings(self, tokens):
-        """ convenient function for sinkhorn loss """
-        return F.embedding(
-            tokens,
-            self.decoder.output_projection.weight
-        )
+    # def forward_embeddings(self, tokens):
+    #     """ convenient function for sinkhorn loss """
+    #     return F.embedding(
+    #         tokens,
+    #         self.decoder.output_projection.weight
+    #     )
 
     def output_projection(self, x):
-        """ convenient function for sinkhorn loss """
+        """ convenient function"""
         return self.decoder.output_projection(x)
 
     def forward(self, src_tokens, src_lengths, prev_output_tokens):
-        """ convenient override for sinkhorn loss """
+        """ convenient override"""
         encoder_out = self.encoder(src_tokens=src_tokens, src_lengths=src_lengths)
         x, extra = self.decoder(
             prev_output_tokens=prev_output_tokens,

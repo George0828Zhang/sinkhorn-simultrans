@@ -3,8 +3,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import math
-# import numpy as np
 from dataclasses import dataclass, field
 import torch
 import torch.nn.functional as F
@@ -12,7 +10,6 @@ from torch.distributions.categorical import Categorical
 from typing import Optional
 from fairseq import utils, metrics
 from fairseq.criterions import (
-    FairseqCriterion,
     register_criterion,
 )
 from fairseq.criterions.label_smoothed_cross_entropy import (
@@ -22,6 +19,7 @@ from fairseq.criterions.label_smoothed_cross_entropy import (
 import logging
 
 logger = logging.getLogger(__name__)
+
 
 def calc_recall_precision(predict, target, pad_idx=1, eps=1e-8):
     N, S = predict.size()
@@ -46,6 +44,7 @@ def calc_recall_precision(predict, target, pad_idx=1, eps=1e-8):
     precision = match / (predict.ne(pad_idx).sum(-1) + eps)
     return recall.sum(), precision.sum()
 
+
 @dataclass
 class LabelSmoothedCTCCriterionConfig(LabelSmoothedCrossEntropyCriterionConfig):
     decoder_use_ctc: bool = field(
@@ -60,6 +59,7 @@ class LabelSmoothedCTCCriterionConfig(LabelSmoothedCrossEntropyCriterionConfig):
         default=False,
         metadata={"help": "print sinkhorn distance value."},
     )
+
 
 @register_criterion(
     "label_smoothed_ctc", dataclass=LabelSmoothedCTCCriterionConfig
@@ -109,7 +109,6 @@ class LabelSmoothedCTCCriterion(LabelSmoothedCrossEntropyCriterion):
             with torch.no_grad():
                 attn = net_output[1]["attn"][0].float()
                 cost = -net_output[1]["log_alpha"][0].float()
-                pad_mask = net_output[1]["padding_mask"]
 
                 B, S, denom = attn.size()
                 dist = (cost * attn).mean() * B * S
@@ -119,8 +118,6 @@ class LabelSmoothedCTCCriterion(LabelSmoothedCrossEntropyCriterion):
                 alignment = (utils.new_arange(attn) * attn).sum(-1)  # (N, L1)
                 inv_rate = alignment[:, :-1] - alignment[:, 1:]
                 inv_rate = (inv_rate / denom).clamp(min=0).float().sum()
-                # inv_rate = alignment[:, 1:] < alignment[:, :-1]
-                # inv_rate = inv_rate.float().sum() / denom
 
                 try:
                     entropy = Categorical(probs=attn.float()).entropy().sum() / denom
@@ -232,7 +229,6 @@ class LabelSmoothedCTCCriterion(LabelSmoothedCrossEntropyCriterion):
 
         inv_rate = sum_logs("inv_rate")
         sinkhorn_dist_sum = sum_logs("sinkhorn_dist")
-        sample_size = sum_logs("sample_size")
         nsentences = sum_logs("nsentences")
         matching_entropy = sum_logs("matching_entropy")
         recall = sum_logs("recall")

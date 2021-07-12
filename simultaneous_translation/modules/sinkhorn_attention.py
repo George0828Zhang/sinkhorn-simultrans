@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python3
 # Copyright (c) Facebook, Inc. and its affiliates.
 #
 # This source code is licensed under the MIT license found in the
@@ -66,39 +66,6 @@ class GaussianBlur(nn.Conv2d):
         return super().forward(
             x.unsqueeze(1)
         ).squeeze(1)
-
-# class DepthwiseConv1dTBC(nn.Conv1d):
-#     """ Makes conv1d a drop-in replacement for Linear """
-#     def __init__(self, in_channels, out_channels, kernel_size, bias=True):
-#         super().__init__(
-#             in_channels, out_channels, kernel_size,
-#             padding=kernel_size // 2,
-#             groups=in_channels,
-#             bias=bias,
-#             padding_mode='replicate',
-#         )
-#         # nn.utils.weight_norm(self, dim=2)
-
-#     def forward(self, x):
-#         return super().forward(
-#             x.permute(1, 2, 0)  # TBC -> BCT
-#         ).permute(2, 0, 1)  # BCT -> TBC
-
-# class GaussianBlur(DepthwiseConv1dTBC):
-#     """ Makes conv1d a drop-in replacement for Linear """
-#     def __init__(self, in_channels, out_channels, kernel_size, bias=False):
-#         super().__init__(
-#             in_channels, out_channels, kernel_size,
-#             bias=bias,
-#         )
-#         mu = (kernel_size - 1) / 2.
-#         var = (kernel_size / 2.)**2
-#         gaussian = (1. / (2. * math.pi * var))**0.5 * torch.exp(
-#             -(torch.arange(kernel_size) - mu)**2. / (2 * var)
-#         ).expand_as(self.weight)
-
-#         self.weight.data = gaussian
-#         self.weight.data.requires_grad = False
 
 
 class SinkhornAttention(nn.Module):

@@ -5,9 +5,6 @@
 # LICENSE file in the root directory of this source tree.
 # Adapted from https://github.com/elbayadm/attn2d/blob/master/examples/waitk
 # Implementation of the papers:
-#   *SimulMT to SimulST: Adapting Simultaneous Text Translation to
-#       End-to-End Simultaneous Speech Translation
-#       https://www.aclweb.org/anthology/2020.aacl-main.58.pdf
 #   *Efficient Wait-k Models for Simultaneous Machine Translation
 #       http://www.interspeech2020.org/uploadfile/pdf/Tue-1-1-2.pdf
 
