@@ -85,8 +85,8 @@ To use the distillation data as training set, use/add the command line argument
 ### Pretrained models & distillation dataset
 |iwslt14 de-en|wmt15 de-en|
 |-|-|
-|[model (31.62)](https://onedrive.live.com/download?cid=3E549F3B24B238B4&resid=3E549F3B24B238B4%216345&authkey=ANTgZvmncA2OFt0)|model|
-|[distilled (de->en)](https://onedrive.live.com/download?cid=3E549F3B24B238B4&resid=3E549F3B24B238B4%216343&authkey=ADWEb0KVv4MwMqo)|distilled (de->en)|
+|[model (31.62)](https://onedrive.live.com/download?cid=3E549F3B24B238B4&resid=3E549F3B24B238B4%216345&authkey=ANTgZvmncA2OFt0)|[model (31.81)](https://onedrive.live.com/download?cid=3E549F3B24B238B4&resid=3E549F3B24B238B4%216410&authkey=AAoV5mPI3w5EoA4)|
+|[distilled (de->en)](https://onedrive.live.com/download?cid=3E549F3B24B238B4&resid=3E549F3B24B238B4%216343&authkey=ADWEb0KVv4MwMqo)|[distilled (de->en)](https://onedrive.live.com/download?cid=3E549F3B24B238B4&resid=3E549F3B24B238B4%216409&authkey=AP289c7TK3Mmkek)|
 
 ## Vanilla wait-k
 We can now train vanilla wait-k ST model as a baseline. To do this, run
