@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-TASK=wait_3_iwslt
-SPLIT=test
+TASK=wait_1_deen_distill
+SPLIT=valid
 AGENT=./agents/simul_t2t_waitk.py
 EXP=../exp
 . ${EXP}/data_path.sh
 CHECKDIR=${EXP}/checkpoints/${TASK}
 AVG=true
-SPM_MODEL=${DATA}/spm_unigram8000.model
+SPM_MODEL=${DATA}/spm_unigram32000.model
 SRC_FILE=$(realpath ${DATA}/../prep/${SPLIT}.${SRC})
 TGT_FILE=$(realpath ${DATA}/../prep/${SPLIT}.${TGT})
 # SRC_FILE=debug/test.de
@@ -36,7 +36,7 @@ simuleval \
   --output ${OUTPUT} \
   --scores \
   --gpu \
-  --test-waitk 3
+  --test-waitk 1
 
 # --sacrebleu-tokenizer ja-mecab \
 #     --eval-latency-unit char \

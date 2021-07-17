@@ -4,7 +4,6 @@
 # LICENSE file in the root directory of this source tree.
 
 import os
-import math
 import logging
 
 logger = logging.getLogger(__name__)
@@ -53,8 +52,9 @@ class SimulTransTextAgentWaitk(TextAgent):
     def initialize_states(self, states):
         states.units.source = ListEntry()
         states.units.target = ListEntry()
-        states.incremental_states = dict()
-    
+        states.enc_incremental_states = dict()
+        states.dec_incremental_states = dict()
+
     def build_states(self, args, client, sentence_id):
         # Initialize states here, for example add customized entry to states
         # This function will be called at beginning of every new sentence
@@ -89,6 +89,7 @@ class SimulTransTextAgentWaitk(TextAgent):
         self.model = task.build_model(state["cfg"]["model"])
         self.model.load_state_dict(state["model"], strict=True)
         self.model.eval()
+        self.model.prepare_for_inference_(state["cfg"])
         self.model.share_memory()
 
         if self.gpu:
@@ -164,7 +165,25 @@ class SimulTransTextAgentWaitk(TextAgent):
             torch.LongTensor([src_indices.size(1)])
         )
 
-        states.encoder_states = self.model.encoder(src_indices, src_lengths)
+        encoder_out = self.model.encoder(
+            src_indices, src_lengths, incremental_state=states.enc_incremental_states)
+
+        if getattr(states, "encoder_states", None) is None:
+            states.encoder_states = {
+                "encoder_out": encoder_out["encoder_out"],  # List[T x B x C]
+                "encoder_padding_mask": [],  # B x T
+                "encoder_embedding": [],  # B x T x C
+                "encoder_states": [],  # List[T x B x C]
+                "src_tokens": [],
+                "src_lengths": [],
+            }
+        else:
+            states.encoder_states["encoder_out"][0] = torch.cat(
+                (
+                    states.encoder_states["encoder_out"][0],
+                    encoder_out["encoder_out"][0]
+                ), dim=0
+            )
 
         torch.cuda.empty_cache()
 
@@ -252,7 +271,7 @@ class SimulTransTextAgentWaitk(TextAgent):
             logits, extra = self.model.forward_decoder(
                 prev_output_tokens=tgt_indices,
                 encoder_out=states.encoder_states,
-                incremental_state=states.incremental_states,
+                incremental_state=states.dec_incremental_states,
             )
 
             states.decoder_out = logits
@@ -283,5 +302,5 @@ class SimulTransTextAgentWaitk(TextAgent):
             # (don't stop before finish reading), return a None
             # self.model.decoder.clear_cache(states.incremental_states)
             index = None
-        
+
         return index
