@@ -385,6 +385,23 @@ class WaitkTransformerDecoder(TransformerDecoder):
 
         return x, {"attn": [attn], "inner_states": inner_states}
 
+    def clear_cache(
+        self,
+        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]],
+        end_id: Optional[int] = None,
+    ):
+        """
+        Clear cache in the monotonic layers.
+        The cache is generated because of a forward pass of decode but no prediction.
+        end_id is the last idx of the layers
+        """
+        if end_id is None:
+            end_id = len(self.layers)
+
+        for index, layer in enumerate(self.layers):
+            if index < end_id:
+                layer.prune_incremental_state(incremental_state)
+
 
 @register_model_architecture(
     "waitk_transformer", "waitk_transformer"

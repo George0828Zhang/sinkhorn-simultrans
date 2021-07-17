@@ -3,6 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+# from torchinfo import summary
 import os
 import logging
 
@@ -19,7 +20,7 @@ try:
 except ImportError:
     print("Please install simuleval 'pip install simuleval'")
 
-
+logger = logging.getLogger(__name__)
 BOW_PREFIX = "\u2581"
 
 
@@ -28,80 +29,6 @@ class SimulTransTextAgentWaitk(TextAgent):
     Simultaneous Translation
     Text agent for wait-k models
     """
-    def __init__(self, args):
-        self.args = args
-
-        # Whether use gpu
-        self.gpu = getattr(args, "gpu", False)
-
-        # Load Model
-        self.load_model_vocab(args)
-
-        # build word splitter
-        self.build_word_splitter(args)
-
-        self.eos = DEFAULT_EOS
-
-        # Max len
-        self.max_len = lambda x: args.max_len_a * x + args.max_len_b
-
-        self.force_finish = args.force_finish
-
-        torch.set_grad_enabled(False)
-
-    def initialize_states(self, states):
-        states.units.source = ListEntry()
-        states.units.target = ListEntry()
-        states.enc_incremental_states = dict()
-        states.dec_incremental_states = dict()
-
-    def build_states(self, args, client, sentence_id):
-        # Initialize states here, for example add customized entry to states
-        # This function will be called at beginning of every new sentence
-        states = TextStates(args, client, sentence_id, self)
-        self.initialize_states(states)
-        return states
-
-    def to_device(self, tensor):
-        if self.gpu:
-            return tensor.cuda()
-        else:
-            return tensor.cpu()
-
-    def load_model_vocab(self, args):
-        utils.import_user_module(args)
-
-        filename = args.model_path
-        if not os.path.exists(filename):
-            raise IOError("Model file not found: {}".format(filename))
-
-        state = checkpoint_utils.load_checkpoint_to_cpu(filename)
-
-        task_args = state["cfg"]["task"]
-        task_args.data = args.data_bin
-
-        task = tasks.setup_task(task_args)
-
-        # build model for ensemble
-        state["cfg"]["model"].load_pretrained_encoder_from = None
-        state["cfg"]["model"].load_pretrained_decoder_from = None
-
-        self.model = task.build_model(state["cfg"]["model"])
-        self.model.load_state_dict(state["model"], strict=True)
-        self.model.eval()
-        self.model.prepare_for_inference_(state["cfg"])
-        self.model.share_memory()
-
-        if self.gpu:
-            self.model.cuda()
-
-        # Set dictionary
-        self.dict = {}
-        self.dict["tgt"] = task.target_dictionary
-        self.dict["src"] = task.source_dictionary
-
-        self.pre_tokenizer = task.pre_tokenizer
-
     @staticmethod
     def add_args(parser):
         # fmt: off
@@ -128,8 +55,78 @@ class SimulTransTextAgentWaitk(TextAgent):
         parser.add_argument("--force-finish", default=False, action="store_true",
                             help="Force the model to finish the hypothsis if the source is not finished")
         parser.add_argument("--test-waitk", type=int, default=1)
+        parser.add_argument("--incremental-encoder", default=False, action="store_true",
+                            help="Update the model incrementally without recomputation of history.")
+
         # fmt: on
         return parser
+
+    def __init__(self, args):
+        self.args = args
+
+        # Whether use gpu
+        self.gpu = getattr(args, "gpu", False)
+
+        # Load Model
+        self.load_model_vocab(args)
+
+        # build word splitter
+        self.build_word_splitter(args)
+
+        self.eos = DEFAULT_EOS
+
+        # Max len
+        self.max_len = lambda x: args.max_len_a * x + args.max_len_b
+
+        self.force_finish = args.force_finish
+        self.incremental_encoder = args.incremental_encoder
+
+        torch.set_grad_enabled(False)
+
+    def load_model_vocab(self, args):
+        filename = args.model_path
+        if not os.path.exists(filename):
+            raise IOError("Model file not found: {}".format(filename))
+
+        state = checkpoint_utils.load_checkpoint_to_cpu(
+            path=filename, arg_overrides=None, load_on_all_ranks=False)
+
+        cfg = state["cfg"]
+
+        # update overwrites:
+        cfg.common.user_dir = args.user_dir
+        cfg.task.data = args.data_bin
+        cfg.model.load_pretrained_encoder_from = None
+        cfg.model.load_pretrained_decoder_from = None
+
+        utils.import_user_module(cfg.common)
+        # Setup task, e.g., translation, language modeling, etc.
+        task = tasks.setup_task(cfg.task)
+        # Build model and criterion
+        model = task.build_model(cfg.model)
+
+        model.load_state_dict(
+            state["model"], strict=True, model_cfg=cfg.model
+        )
+
+        # Optimize ensemble for generation
+        if self.gpu:
+            model.cuda()
+        model.prepare_for_inference_(cfg)
+
+        self.model = model
+
+        # Set dictionary
+        self.dict = {}
+        self.dict["tgt"] = task.target_dictionary
+        self.dict["src"] = task.source_dictionary
+
+        self.pre_tokenizer = task.pre_tokenizer
+
+        # logger.info(summary(self.model))
+        logger.info("task: {}".format(task.__class__.__name__))
+        logger.info("model: {}".format(self.model.__class__.__name__))
+        logger.info("pre_tokenizer: {}".format(self.pre_tokenizer))
 
     def build_word_splitter(self, args):
         self.spm = {}
@@ -139,6 +136,25 @@ class SimulTransTextAgentWaitk(TextAgent):
                 if path:
                     self.spm[lang] = spm.SentencePieceProcessor()
                     self.spm[lang].Load(path)
+
+    def initialize_states(self, states):
+        states.units.source = ListEntry()
+        states.units.target = ListEntry()
+        states.enc_incremental_states = dict()
+        states.dec_incremental_states = dict()
+
+    def build_states(self, args, client, sentence_id):
+        # Initialize states here, for example add customized entry to states
+        # This function will be called at beginning of every new sentence
+        states = TextStates(args, client, sentence_id, self)
+        self.initialize_states(states)
+        return states
+
+    def to_device(self, tensor):
+        if self.gpu:
+            return tensor.cuda()
+        else:
+            return tensor.cpu()
 
     def segment_to_units(self, segment, states):
         # Split a full word (segment) into subwords (units)
@@ -154,7 +170,7 @@ class SimulTransTextAgentWaitk(TextAgent):
             for x in states.units.source.value
         ]
 
-        if states.finish_read():
+        if states.finish_read() and src_indices[-1] != self.dict["tgt"].eos_index:
             # Append the eos index when the prediction is over
             src_indices += [self.dict["tgt"].eos_index]
 
@@ -165,25 +181,29 @@ class SimulTransTextAgentWaitk(TextAgent):
             torch.LongTensor([src_indices.size(1)])
         )
 
-        encoder_out = self.model.encoder(
-            src_indices, src_lengths, incremental_state=states.enc_incremental_states)
+        if self.incremental_encoder:
+            encoder_out = self.model.encoder(
+                src_indices, src_lengths, incremental_state=states.enc_incremental_states)
 
-        if getattr(states, "encoder_states", None) is None:
-            states.encoder_states = {
-                "encoder_out": encoder_out["encoder_out"],  # List[T x B x C]
-                "encoder_padding_mask": [],  # B x T
-                "encoder_embedding": [],  # B x T x C
-                "encoder_states": [],  # List[T x B x C]
-                "src_tokens": [],
-                "src_lengths": [],
-            }
+            if getattr(states, "encoder_states", None) is None:
+                states.encoder_states = {
+                    "encoder_out": encoder_out["encoder_out"],  # List[T x B x C]
+                    "encoder_padding_mask": [],  # B x T
+                    "encoder_embedding": [],  # B x T x C
+                    "encoder_states": [],  # List[T x B x C]
+                    "src_tokens": [],
+                    "src_lengths": [],
+                }
+            else:
+                states.encoder_states["encoder_out"][0] = torch.cat(
+                    (
+                        states.encoder_states["encoder_out"][0],
+                        encoder_out["encoder_out"][0]
+                    ), dim=0
+                )
         else:
-            states.encoder_states["encoder_out"][0] = torch.cat(
-                (
-                    states.encoder_states["encoder_out"][0],
-                    encoder_out["encoder_out"][0]
-                ), dim=0
-            )
+            states.encoder_states = self.model.encoder(
+                src_indices, src_lengths)
 
         torch.cuda.empty_cache()
 
@@ -300,7 +320,7 @@ class SimulTransTextAgentWaitk(TextAgent):
         ):
             # If we want to force finish the translation
             # (don't stop before finish reading), return a None
-            # self.model.decoder.clear_cache(states.incremental_states)
+            self.model.decoder.clear_cache(states.dec_incremental_states)
             index = None
 
         return index
