@@ -75,7 +75,6 @@ for l in ${SRC} ${TGT}; do
         grep -v '</description>' | \
         perl $NORM_PUNC $l | \
         perl $REM_NON_PRINT_CHAR | \
-        perl $TOKENIZER -threads 8 -a -l $l | \
         perl $LC > $tmp/train.tags.$lang.$l
 done
 
@@ -91,7 +90,6 @@ for l in ${SRC} ${TGT}; do
             sed -e "s/\’/\'/g" | \
             perl $NORM_PUNC $l | \
             perl $REM_NON_PRINT_CHAR | \
-            perl $TOKENIZER -threads 8 -l $l | \
             perl $LC > $f
         echo ""
     done

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Adapted from https://github.com/pytorch/fairseq/blob/master/examples/translation/prepare-wmt14en2de.sh
-DATA_ROOT=/media/george/Data/wmt15
+DATA_ROOT=/media/george/Data/iwslt14
 FAIRSEQ=~/utility/fairseq
 export PYTHONPATH="$FAIRSEQ:$PYTHONPATH"
 SCRIPTS=~/utility/mosesdecoder/scripts
@@ -8,7 +8,7 @@ SCRIPTS=~/utility/mosesdecoder/scripts
 
 SRC=de
 TGT=en
-vocab=8000
+vocab=32000
 vtype=unigram
 workers=4
 
@@ -77,8 +77,7 @@ for l in ${SRC} ${TGT}; do
         echo "precprocess train $f.$l"
         cat $orig/$f.$l | \
             perl $NORM_PUNC $l | \
-            perl $REM_NON_PRINT_CHAR | \
-            perl $TOKENIZER -threads 8 -a -l $l >> $prep/train.dirty.$l
+            perl $REM_NON_PRINT_CHAR >> $prep/train.dirty.$l
     done
 done
 
@@ -94,8 +93,7 @@ for l in ${SRC} ${TGT}; do
         sed -e 's/\s*<\/seg>\s*//g' | \
         sed -e "s/\’/\'/g" | \
         perl $NORM_PUNC $l | \
-        perl $REM_NON_PRINT_CHAR | \
-        perl $TOKENIZER -threads 8 -a -l $l > $prep/valid.dirty.$l
+        perl $REM_NON_PRINT_CHAR > $prep/valid.dirty.$l
 done
 
 echo "pre-processing test data..."
@@ -110,8 +108,7 @@ for l in ${SRC} ${TGT}; do
         sed -e 's/\s*<\/seg>\s*//g' | \
         sed -e "s/\’/\'/g" | \
         perl $NORM_PUNC $l | \
-        perl $REM_NON_PRINT_CHAR | \
-        perl $TOKENIZER -threads 8 -a -l $l > $prep/test.$l
+        perl $REM_NON_PRINT_CHAR > $prep/test.$l
 done
 
 # clean too short too long

@@ -93,6 +93,20 @@ class CausalTransformerEncoderLayer(NonCausalTransformerEncoderLayer):
         self.delay = delay
         assert self.delay > 0, "Cannot be faster than delay=1."
 
+    def prune_incremental_state(self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]):
+        input_buffer = self.self_attn._get_input_buffer(incremental_state)
+        for key in ["prev_key", "prev_value"]:
+            input_buffer_key = input_buffer[key]
+            assert input_buffer_key is not None
+            if input_buffer_key.size(2) > self.delay - 1:
+                input_buffer[key] = input_buffer_key[:, :, :1 - self.delay, :]
+            else:
+                typed_empty_dict: Dict[str, Optional[Tensor]] = {}
+                input_buffer = typed_empty_dict
+                break
+        assert incremental_state is not None
+        self.self_attn._set_input_buffer(incremental_state, input_buffer)
+
     def buffered_future_mask(self, tensor):
         dim = tensor.size(0)
         # self._future_mask.device != tensor.device is not working in TorchScript. This is a workaround.
@@ -232,3 +246,17 @@ class WaitkTransformerDecoderLayer(TransformerDecoderLayer):
 
     def make_generation_fast_(self, need_attn: bool = False, **kwargs):
         self.need_attn = need_attn
+
+    def prune_incremental_state(self, incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]]):
+        input_buffer = self.self_attn._get_input_buffer(incremental_state)
+        for key in ["prev_key", "prev_value"]:
+            input_buffer_key = input_buffer[key]
+            assert input_buffer_key is not None
+            if input_buffer_key.size(2) > 1:
+                input_buffer[key] = input_buffer_key[:, :, :-1, :]
+            else:
+                typed_empty_dict: Dict[str, Optional[Tensor]] = {}
+                input_buffer = typed_empty_dict
+                break
+        assert incremental_state is not None
+        self.self_attn._set_input_buffer(incremental_state, input_buffer)

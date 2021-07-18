@@ -72,8 +72,7 @@ for l in ${SRC} ${TGT}; do
         grep -v '</title>' | \
         grep -v '</description>' | \
         perl $NORM_PUNC $l | \
-        perl $REM_NON_PRINT_CHAR | \
-        perl $TOKENIZER -threads 8 -a -l $l > $tmp/train.tags.$lang.$l
+        perl $REM_NON_PRINT_CHAR > $tmp/train.tags.$lang.$l
 done
 
 echo "pre-processing test data..."
@@ -87,8 +86,7 @@ for l in ${SRC} ${TGT}; do
             sed -e 's/\s*<\/seg>\s*//g' | \
             sed -e "s/\’/\'/g" | \
             perl $NORM_PUNC $l | \
-            perl $REM_NON_PRINT_CHAR | \
-            perl $TOKENIZER -threads 8 -l $l > $f
+            perl $REM_NON_PRINT_CHAR > $f
         echo ""
     done
 done

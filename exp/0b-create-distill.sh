@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Adapted from https://github.com/pytorch/fairseq/blob/simulastsharedtask/examples/translation/prepare-iwslt14.sh
-DATA_ROOT=/media/george/Data/iwslt14
+DATA_ROOT=/media/george/Data/wmt15
 FAIRSEQ=~/utility/fairseq
 export PYTHONPATH="$FAIRSEQ:$PYTHONPATH"
 SCRIPTS=~/utility/mosesdecoder/scripts
@@ -11,7 +11,7 @@ DECODED=./mt.results/generate-train.txt
 SRC=de
 TGT=en
 lang=de-en
-vocab=8000
+vocab=32000
 vtype=unigram
 workers=4
 
@@ -25,8 +25,8 @@ spm_train=$FAIRSEQ/scripts/spm_train.py
 spm_encode=$FAIRSEQ/scripts/spm_encode.py
 
 DATA=${DATA_ROOT}/${SRC}-${TGT}
-SPM_MODEL=${DATA_ROOT}/${SRC}-${TGT}/data-bin/spm_unigram8000.model
-DICT=${DATA_ROOT}/${SRC}-${TGT}/data-bin/spm_unigram8000.txt
+SPM_MODEL=${DATA_ROOT}/${SRC}-${TGT}/data-bin/spm_${vtype}${vocab}.model
+DICT=${DATA_ROOT}/${SRC}-${TGT}/data-bin/spm_${vtype}${vocab}.txt
 
 
 prep=${DATA}/prep
@@ -36,8 +36,8 @@ newbin=${DATA}/data-bin/tmp
 mkdir -p $prep $ready $bin $newbin
 
 echo "pre-processing distill data..."
-grep -E "S-[0-9]+" ${DECODED} | cut -f2 | perl $TOKENIZER -threads 8 -a -l ${SRC} > $prep/distill.${SRC}
-grep -E "D-[0-9]+" ${DECODED} | cut -f3 | perl $TOKENIZER -threads 8 -a -l ${TGT} > $prep/distill.${TGT}
+grep -E "S-[0-9]+" ${DECODED} | cut -f2 > $prep/distill.${SRC}
+grep -E "H-[0-9]+" ${DECODED} | cut -f3 > $prep/distill.${TGT}
 
 echo "Using SPM model $SPM_MODEL"
 for l in ${SRC} ${TGT}; do

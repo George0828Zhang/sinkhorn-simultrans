@@ -167,7 +167,6 @@ class SimulTransTextAgentSinkhorn(TextAgent):
     def segment_to_units(self, segment, states):
         # Split a full word (segment) into subwords (units)
         return self.spm['src'].EncodeAsPieces(segment)
-        # return segment.split()
 
     def forward_encoder(self, *args, **kwargs):
         return self.model.encoder.causal_encoder(*args, **kwargs)
@@ -180,7 +179,67 @@ class SimulTransTextAgentSinkhorn(TextAgent):
         return x, None
 
     def update_model_encoder(self, states, finish=False):
-        pass
+        delay = self.args.test_waitk
+        src_len = len(states.units.source)
+        enc_len = 0
+
+        if getattr(states, "encoder_states", None) is not None:
+            enc_len = states.encoder_states["encoder_out"][0].size(0)
+
+        if not finish and src_len < enc_len + delay:
+            return
+
+        logger.info("ENC")
+        src_indices = [
+            self.dict['src'].index(x)
+            for x in states.units.source.value
+        ]
+
+        if states.finish_read() and src_indices[-1] != self.dict["tgt"].eos_index:
+            # Append the eos index when the prediction is over
+            src_indices += [self.dict["tgt"].eos_index]
+
+        src_indices = self.to_device(
+            torch.LongTensor(src_indices).unsqueeze(0)
+        )
+        src_lengths = self.to_device(
+            torch.LongTensor([src_indices.size(1)])
+        )
+
+        encoder_out = self.forward_encoder(
+            src_indices,
+            src_lengths,
+            incremental_state=states.enc_incremental_states,
+            incremental_step=src_len - enc_len,
+        )
+
+        # pruning incomplete encoding output and states
+        encoder_out["encoder_out"][0] = encoder_out["encoder_out"][0][:1]
+        self.model.encoder.causal_encoder.clear_cache(
+            states.enc_incremental_states,
+            keep=enc_len + 1
+        )
+
+        if getattr(states, "encoder_states", None) is None:
+            states.encoder_states = {
+                "encoder_out": encoder_out["encoder_out"],  # List[T x B x C]
+                "encoder_padding_mask": [],  # B x T
+                "encoder_embedding": [],  # B x T x C
+                "encoder_states": [],  # List[T x B x C]
+                "src_tokens": [],
+                "src_lengths": [],
+            }
+        else:
+            states.encoder_states["encoder_out"][0] = torch.cat(
+                (
+                    states.encoder_states["encoder_out"][0],
+                    encoder_out["encoder_out"][0]
+                ), dim=0
+            )
+
+        # logger.info(states.encoder_states["encoder_out"][0].shape)
+
+        torch.cuda.empty_cache()
 
     def update_states_read(self, states):
         # Happens after a read action.
@@ -353,83 +412,5 @@ class SimulTransTextAgentSinkhorn(TextAgent):
             self.model.decoder.clear_cache(states.dec_incremental_states)
             index = None
 
-        # logger.debug(f"({index})")
+        logger.info(f"({index})")
         return index
-
-
-# def units_to_segment(self, unit_queue, states):
-#      """
-#         queue: stores bpe tokens.
-#         server: accept words.
-
-#         Therefore, we need merge subwords into word. we find the first
-#         subword that starts with BOW_PREFIX, then merge with subwords
-#         prior to this subword, remove them from queue, send to server.
-#         """
-
-#       # Merge sub word to full word.
-#       tgt_dict = self.dict["tgt"]
-
-#        # if segment starts with eos, send EOS
-#        if tgt_dict.eos() == unit_queue[0]:
-#             return DEFAULT_EOS
-
-#         string_to_return = None
-#         last_token = getattr(states, "last_token", self.blank_idx)
-
-#         def decode(tok_idx):
-#             toks = torch.LongTensor([last_token] + list(tok_idx))
-#             toks = toks.unique_consecutive()
-#             if toks.size(-1) == 1:
-#                 # all tokens equals last token
-#                 return None
-#             toks = toks[1:]
-#             if toks.eq(self.blank_idx).all():
-#                 toks = toks[-1:]
-#             else:
-#                 toks = toks[toks != self.blank_idx]
-
-#             states.last_token = toks[-1]
-#             hyp = tgt_dict.string(
-#                 toks,
-#                 "sentencepiece",
-#             )
-#             if self.pre_tokenizer is not None:
-#                 hyp = self.pre_tokenizer.decode(hyp)
-#             return hyp
-
-#         # if force finish, there will be None's
-#         segment = []
-#         if None in unit_queue.value:
-#             unit_queue.value.remove(None)
-
-#         src_len = states.encoder_states["encoder_out"][0].size(0)
-#         if (
-#             (len(unit_queue) > 0 and tgt_dict.eos() == unit_queue[-1])
-#             or len(states.units.target) > self.max_len(src_len)
-#         ):
-#             hyp = decode(unit_queue)
-#             string_to_return = ([hyp] if hyp else []) + [DEFAULT_EOS]
-#         else:
-#             for index in unit_queue:
-#                 token = tgt_dict.string([index])
-
-#                 if len(segment) == 0 or segment[-1] == index:
-#                     segment += [index]
-#                 elif token.startswith(BOW_PREFIX):
-#                     for j in range(len(segment)):
-#                         unit_queue.pop()
-
-#                     hyp = decode(segment)
-#                     string_to_return = [hyp] if hyp else []
-
-#                     if tgt_dict.eos() == unit_queue[0]:
-#                         string_to_return += [DEFAULT_EOS]
-
-#                     break
-
-#         logger.debug("")
-#         logger.debug(string_to_return)
-#         logger.debug("")
-
-#         return string_to_return
