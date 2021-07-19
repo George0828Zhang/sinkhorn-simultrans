@@ -59,6 +59,10 @@ class LabelSmoothedCTCCriterionConfig(LabelSmoothedCrossEntropyCriterionConfig):
         default=False,
         metadata={"help": "print sinkhorn distance value."},
     )
+    eos_loss: bool = field(
+        default=False,
+        metadata={"help": "calculate loss for eos token. default is to treat eos as pad."},
+    )
 
 
 @register_criterion(
@@ -82,6 +86,7 @@ class LabelSmoothedCTCCriterion(LabelSmoothedCrossEntropyCriterion):
         self.eos_idx = task.target_dictionary.eos()
         self.zero_infinity = cfg.zero_infinity
         self.report_sinkhorn_dist = cfg.report_sinkhorn_dist
+        self.eos_loss = cfg.eos_loss
 
     def forward(self, model, sample, reduce=True):
         net_output = model(**sample["net_input"])
@@ -186,9 +191,12 @@ class LabelSmoothedCTCCriterion(LabelSmoothedCrossEntropyCriterion):
             input_lengths = lprobs.new_ones(
                 (bsz, max_src), dtype=torch.long).sum(-1)
 
-        pad_mask = (target != self.pad_idx) & (
-            target != self.eos_idx
-        )
+        # pad_mask = (target != self.pad_idx) & (
+        #     target != self.eos_idx
+        # )
+        pad_mask = target.ne(self.pad_idx)
+        if not self.eos_loss:
+            pad_mask &= target.ne(self.eos_idx)
         targets_flat = target.masked_select(pad_mask)
         target_lengths = pad_mask.long().sum(-1)
 
