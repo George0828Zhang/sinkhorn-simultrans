@@ -19,7 +19,7 @@ except ImportError:
     print("Please install simuleval 'pip install simuleval'")
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+# logger.setLevel(logging.DEBUG)
 BOW_PREFIX = "\u2581"
 
 
@@ -189,15 +189,15 @@ class SimulTransTextAgentSinkhorn(TextAgent):
         if not finish and src_len < enc_len + delay:
             return
 
-        logger.debug("ENC")
         src_indices = [
             self.dict['src'].index(x)
             for x in states.units.source.value
         ]
 
-        if states.finish_read() and src_indices[-1] != self.dict["tgt"].eos_index:
+        if states.finish_read() and src_indices[-1] != self.dict["src"].eos():
             # Append the eos index when the prediction is over
-            src_indices += [self.dict["tgt"].eos_index]
+            src_indices += [self.dict["src"].eos()]
+            src_len += 1
 
         src_indices = self.to_device(
             torch.LongTensor(src_indices).unsqueeze(0)
@@ -255,8 +255,6 @@ class SimulTransTextAgentSinkhorn(TextAgent):
         # Merge sub word to full word.
         tgt_dict = self.dict["tgt"]
 
-        debug_q = [tgt_dict.string([u]) for u in unit_queue]
-
         # if segment starts with eos, send EOS
         if tgt_dict.eos() == unit_queue[0]:
             return DEFAULT_EOS
@@ -291,7 +289,6 @@ class SimulTransTextAgentSinkhorn(TextAgent):
         if None in unit_queue.value:
             unit_queue.value.remove(None)
 
-        src_len = states.encoder_states["encoder_out"][0].size(0)
         if (
             (len(unit_queue) > 0 and tgt_dict.eos() == unit_queue[-1])
             # or len(states.units.target) > self.max_len(src_len)
@@ -325,14 +322,9 @@ class SimulTransTextAgentSinkhorn(TextAgent):
                 if tgt_dict.eos() == unit_queue[0]:
                     string_to_return += [DEFAULT_EOS]
 
-        logger.debug(f"QUEUE: {debug_q},\tSTRING: {string_to_return}")
-
         return string_to_return
 
     def policy(self, states):
-        # if not getattr(states, "encoder_states", None):
-        #     return READ_ACTION
-        # logger.debug(states)
 
         waitk = self.test_waitk
         src_len = len(states.units.source)
@@ -343,28 +335,23 @@ class SimulTransTextAgentSinkhorn(TextAgent):
         if getattr(states, "encoder_states", None) is not None:
             enc_len = states.encoder_states["encoder_out"][0].size(0)
 
-        logger.debug(f"LEN: {src_len} {enc_len} {tgt_len}")
-
         if getattr(states, "decoder_out", None) is not None:
             return WRITE_ACTION
 
         if src_len - tgt_len < waitk and not states.finish_read():
-            # logger.debug("READ")
             return READ_ACTION
         else:
-            if states.finish_read() and enc_len < src_len:
-                # encode the last few sources
+            if states.finish_read() and enc_len < src_len + 1:
+                # encode the last few sources (+1 eos)
                 self.update_model_encoder(states, finish=True)
                 enc_len = states.encoder_states["encoder_out"][0].size(0)
 
             if enc_len > tgt_len:
-                logger.debug("DECODE")
                 logits, _ = self.forward_decoder(
                     encoder_out=states.encoder_states,
                     dec_len=enc_len - tgt_len
-                )                
+                )
             else:
-                logger.debug("ADD EOS")
                 eos = self.dict["tgt"].eos_index
                 proto = states.encoder_states["encoder_out"][0]
                 eos_tensor = proto.new_zeros((1, 1, proto.size(-1)))
@@ -378,7 +365,6 @@ class SimulTransTextAgentSinkhorn(TextAgent):
 
     def predict(self, states):
 
-        # logger.debug("WRITE")
         lprobs = self.model.get_normalized_probs(
             [states.decoder_out[:, :1]], log_probs=True
         )
@@ -402,5 +388,4 @@ class SimulTransTextAgentSinkhorn(TextAgent):
             self.model.decoder.clear_cache(states.dec_incremental_states)
             index = None
 
-        # logger.debug(f"({index})")
         return index
