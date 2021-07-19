@@ -19,7 +19,7 @@ except ImportError:
     print("Please install simuleval 'pip install simuleval'")
 
 logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.DEBUG)
 BOW_PREFIX = "\u2581"
 
 
@@ -63,8 +63,8 @@ class SimulTransTextAgentSinkhorn(TextAgent):
         return parser
 
     def __init__(self, args):
-        self.args = args
 
+        self.test_waitk = args.test_waitk
         self.force_finish = args.force_finish
         self.incremental_encoder = args.incremental_encoder
         self.print_blank = args.print_blank
@@ -179,7 +179,7 @@ class SimulTransTextAgentSinkhorn(TextAgent):
         return x, None
 
     def update_model_encoder(self, states, finish=False):
-        delay = self.args.test_waitk
+        delay = self.test_waitk
         src_len = len(states.units.source)
         enc_len = 0
 
@@ -189,7 +189,7 @@ class SimulTransTextAgentSinkhorn(TextAgent):
         if not finish and src_len < enc_len + delay:
             return
 
-        logger.info("ENC")
+        logger.debug("ENC")
         src_indices = [
             self.dict['src'].index(x)
             for x in states.units.source.value
@@ -236,8 +236,6 @@ class SimulTransTextAgentSinkhorn(TextAgent):
                     encoder_out["encoder_out"][0]
                 ), dim=0
             )
-
-        # logger.info(states.encoder_states["encoder_out"][0].shape)
 
         torch.cuda.empty_cache()
 
@@ -296,7 +294,7 @@ class SimulTransTextAgentSinkhorn(TextAgent):
         src_len = states.encoder_states["encoder_out"][0].size(0)
         if (
             (len(unit_queue) > 0 and tgt_dict.eos() == unit_queue[-1])
-            or len(states.units.target) > self.max_len(src_len)
+            # or len(states.units.target) > self.max_len(src_len)
         ):
             hyp = decode(unit_queue)
             string_to_return = ([hyp] if hyp else []) + [DEFAULT_EOS]
@@ -312,7 +310,7 @@ class SimulTransTextAgentSinkhorn(TextAgent):
                     and unit_id not in ignore
                 ):
                     """
-                    find the first tokens with escape symbol 
+                    find the first tokens with escape symbolS
                     that is not a continuation of previous tokens
                     """
                     space_p = p
@@ -332,56 +330,48 @@ class SimulTransTextAgentSinkhorn(TextAgent):
         return string_to_return
 
     def policy(self, states):
+        # if not getattr(states, "encoder_states", None):
+        #     return READ_ACTION
+        # logger.debug(states)
+
+        waitk = self.test_waitk
+        src_len = len(states.units.source)
+        enc_len = 0
+        tgt_len = math.ceil(
+            len(states.units.target) / self.model.encoder.upsample_ratio)
+
+        if getattr(states, "encoder_states", None) is not None:
+            enc_len = states.encoder_states["encoder_out"][0].size(0)
+
+        logger.debug(f"LEN: {src_len} {enc_len} {tgt_len}")
+
         if getattr(states, "decoder_out", None) is not None:
             return WRITE_ACTION
 
-        if not states.finish_read():
+        if src_len - tgt_len < waitk and not states.finish_read():
+            # logger.debug("READ")
             return READ_ACTION
         else:
-            src_indices = [
-                self.dict['src'].index(x)
-                for x in states.units.source.value
-            ]
-            src_indices += [self.dict["tgt"].eos_index]
-            src_indices = self.to_device(
-                torch.LongTensor(src_indices).unsqueeze(0)
-            )
-            src_lengths = self.to_device(
-                torch.LongTensor([src_indices.size(1)])
-            )
+            if states.finish_read() and enc_len < src_len:
+                # encode the last few sources
+                self.update_model_encoder(states, finish=True)
+                enc_len = states.encoder_states["encoder_out"][0].size(0)
 
-            encoder_out = self.forward_encoder(
-                src_indices,
-                src_lengths,
-            )
+            if enc_len > tgt_len:
+                logger.debug("DECODE")
+                logits, _ = self.forward_decoder(
+                    encoder_out=states.encoder_states,
+                    dec_len=enc_len - tgt_len
+                )                
+            else:
+                logger.debug("ADD EOS")
+                eos = self.dict["tgt"].eos_index
+                proto = states.encoder_states["encoder_out"][0]
+                eos_tensor = proto.new_zeros((1, 1, proto.size(-1)))
+                eos_tensor[..., eos] = 1
+                logits = eos_tensor
 
-            states.encoder_states = encoder_out
-
-            logits, _ = self.forward_decoder(
-                encoder_out=encoder_out,
-                dec_len=0
-            )
-            _eos = logits.new_zeros((1, 1, logits.size(-1)))
-            _eos[...,self.dict["tgt"].eos_index:self.dict["tgt"].eos_index+1] = 1
-            logits = torch.cat(
-                (
-                    logits,
-                    _eos
-                ),
-                dim=1
-            )
             states.decoder_out = logits
-
-            # lprobs = self.model.get_normalized_probs(
-            #     [logits], log_probs=True
-            # )
-            # debug_1 = lprobs.argmax(dim=-1).squeeze(0)
-            # debug_2 = debug_1.unique_consecutive()
-            # debug_3 = debug_2[debug_2 != 0]
-            # debug_4 = self.dict["tgt"].string(debug_3)
-
-            # import pdb; pdb.set_trace()
-
             torch.cuda.empty_cache()
 
             return WRITE_ACTION
@@ -412,5 +402,5 @@ class SimulTransTextAgentSinkhorn(TextAgent):
             self.model.decoder.clear_cache(states.dec_incremental_states)
             index = None
 
-        logger.info(f"({index})")
+        # logger.debug(f"({index})")
         return index

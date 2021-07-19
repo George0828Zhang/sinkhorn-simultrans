@@ -44,6 +44,7 @@ class CausalTransformerEncoder(TransformerEncoder):
     """
     def __init__(self, args, dictionary, embed_tokens):
         super().__init__(args, dictionary, embed_tokens)
+        self.delay = args.delay
         self.layers = nn.ModuleList([
             CausalTransformerEncoderLayer(args, delay=args.delay)
         ])
@@ -56,10 +57,13 @@ class CausalTransformerEncoder(TransformerEncoder):
         src_tokens,
         src_lengths: Optional[torch.Tensor] = None,  # not used
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
+        incremental_step: Optional[int] = 1,
         return_all_hiddens: bool = False,
         token_embeddings: Optional[torch.Tensor] = None,  # not used
     ):
         """ Same as parent but with incremental_states """
+        # import pdb
+        # pdb.set_trace()
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
         has_pads = src_tokens.device.type == "xla" or encoder_padding_mask.any()
@@ -73,9 +77,10 @@ class CausalTransformerEncoder(TransformerEncoder):
             )
 
         if incremental_state is not None:
-            src_tokens = src_tokens[:, -1:]
+            src_tokens = src_tokens[:, -incremental_step:]
             if positions is not None:
-                positions = positions[:, -1:]
+                positions = positions[:, -incremental_step:]
+            has_pads = False
 
         # embed tokens and positions
         x = encoder_embedding = self.embed_scale * self.embed_tokens(src_tokens)
@@ -122,6 +127,24 @@ class CausalTransformerEncoder(TransformerEncoder):
             "src_tokens": [],
             "src_lengths": [],
         }
+
+    def clear_cache(
+        self,
+        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]],
+        end_id: Optional[int] = None,
+        keep: Optional[int] = None,
+    ):
+        """
+        Clear cache in the monotonic layers.
+        The cache is generated because of a forward pass of decode but no prediction.
+        end_id is the last idx of the layers
+        """
+        if end_id is None:
+            end_id = len(self.layers)
+
+        for index, layer in enumerate(self.layers):
+            if index < end_id:
+                layer.prune_incremental_state(incremental_state, keep)
 
 
 @register_model("sinkhorn_encoder")
@@ -273,15 +296,12 @@ class SinkhornEncoderModel(FairseqEncoderModel):
 
     def forward_causal(
         self, src_tokens, src_lengths,
-        incremental_state: Optional[Dict[str,
-                                         Dict[str, Optional[Tensor]]]] = None,
         return_all_hiddens: bool = False,
         **unused,
     ):
         encoder_out = self.encoder.forward_causal(
             src_tokens=src_tokens,
             src_lengths=src_lengths,
-            incremental_state=incremental_state,
             return_all_hiddens=return_all_hiddens
         )
         x = self.output_projection(encoder_out["encoder_out"][0])
@@ -393,12 +413,10 @@ class SinkhornCascadedEncoder(FairseqEncoder):
 
     def forward_causal(
         self, src_tokens, src_lengths,
-        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
         return_all_hiddens: bool = False
     ):
         causal_out = self.causal_encoder(
             src_tokens, src_lengths,
-            incremental_state=incremental_state,
             return_all_hiddens=return_all_hiddens
         )
         x = causal_out["encoder_out"][0]
