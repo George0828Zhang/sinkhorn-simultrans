@@ -136,6 +136,7 @@ class CausalTransformerEncoder(TransformerEncoder):
         src_tokens,
         src_lengths: Optional[torch.Tensor] = None,  # not used
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
+        incremental_step: Optional[int] = 1,
         return_all_hiddens: bool = False,
         token_embeddings: Optional[torch.Tensor] = None,  # not used
     ):
@@ -153,9 +154,9 @@ class CausalTransformerEncoder(TransformerEncoder):
             )
 
         if incremental_state is not None:
-            src_tokens = src_tokens[:, -1:]
+            src_tokens = src_tokens[:, -incremental_step:]
             if positions is not None:
-                positions = positions[:, -1:]
+                positions = positions[:, -incremental_step:]
 
         # embed tokens and positions
         x = encoder_embedding = self.embed_scale * \

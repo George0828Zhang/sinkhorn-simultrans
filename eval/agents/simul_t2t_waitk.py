@@ -7,8 +7,6 @@
 import os
 import logging
 
-logger = logging.getLogger(__name__)
-
 from fairseq import checkpoint_utils, tasks, utils
 import sentencepiece as spm
 import torch
@@ -21,6 +19,7 @@ except ImportError:
     print("Please install simuleval 'pip install simuleval'")
 
 logger = logging.getLogger(__name__)
+# logger.setLevel(logging.DEBUG)
 BOW_PREFIX = "\u2581"
 
 
@@ -76,7 +75,8 @@ class SimulTransTextAgentWaitk(TextAgent):
         self.eos = DEFAULT_EOS
 
         # Max len
-        self.max_len = lambda x: args.max_len_a * x + args.max_len_b
+        self.max_len_a = args.max_len_a
+        self.max_len_b = args.max_len_b
 
         self.force_finish = args.force_finish
         self.incremental_encoder = args.incremental_encoder
@@ -170,9 +170,12 @@ class SimulTransTextAgentWaitk(TextAgent):
             for x in states.units.source.value
         ]
 
+        run_eos = False
         if states.finish_read() and src_indices[-1] != self.dict["tgt"].eos_index:
             # Append the eos index when the prediction is over
             src_indices += [self.dict["tgt"].eos_index]
+            run_eos = True
+            logger.debug("ADD EOS")
 
         src_indices = self.to_device(
             torch.LongTensor(src_indices).unsqueeze(0)
@@ -183,7 +186,13 @@ class SimulTransTextAgentWaitk(TextAgent):
 
         if self.incremental_encoder:
             encoder_out = self.model.encoder(
-                src_indices, src_lengths, incremental_state=states.enc_incremental_states)
+                src_indices,
+                src_lengths,
+                incremental_state=states.enc_incremental_states,
+                incremental_step=2 if run_eos else 1,
+            )
+
+            # logger.debug(encoder_out["encoder_out"][0].shape)
 
             if getattr(states, "encoder_states", None) is None:
                 states.encoder_states = {
@@ -233,10 +242,16 @@ class SimulTransTextAgentWaitk(TextAgent):
         if None in unit_queue.value:
             unit_queue.value.remove(None)
 
-        src_len = states.encoder_states["encoder_out"][0].size(0)
+        def exceedmaxlen():
+            if not states.finish_read():
+                return False
+            src_len = states.encoder_states["encoder_out"][0].size(0)
+            tgt_len = len(states.units.target)
+            return tgt_len > (src_len * self.max_len_a + self.max_len_b)
+
         if (
             (len(unit_queue) > 0 and tgt_dict.eos() == unit_queue[-1])
-            or len(states.units.target) > self.max_len(src_len)
+            or exceedmaxlen()
         ):
             hyp = tgt_dict.string(
                 unit_queue,
@@ -271,15 +286,21 @@ class SimulTransTextAgentWaitk(TextAgent):
             return READ_ACTION
 
         waitk = self.args.test_waitk
-        src_len = states.encoder_states["encoder_out"][0].size(0)
+        src_len = len(states.units.source)
+        enc_len = 0
         tgt_len = len(states.units.target)
+
+        if getattr(states, "encoder_states", None) is not None:
+            enc_len = states.encoder_states["encoder_out"][0].size(0)
 
         if src_len - tgt_len < waitk and not states.finish_read():
             # logger.info(f"Read, src_len: {src_len} tgt_len: {tgt_len}")
             return READ_ACTION
         else:
-            # logger.info(f"Write, src_len: {src_len} tgt_len: {tgt_len}")
-            # pdb.set_trace()
+            if states.finish_read() and enc_len < src_len + 1:
+                # encode the last few sources (+1 eos)
+                self.update_model_encoder(states)
+                enc_len = states.encoder_states["encoder_out"][0].size(0)
 
             tgt_indices = self.to_device(
                 torch.LongTensor(
