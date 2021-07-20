@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-TASK=wait_1_deen_distill
-SPLIT=valid
-EXP=../exp
+TASK=wait_1_iwslt_deen
+SPLIT=test
+EXP=../expiwslt
 . ${EXP}/data_path.sh
 CHECKDIR=${EXP}/checkpoints/${TASK}
 CHECKPOINT_FILENAME=checkpoint_best.pt
+RESULT=${TASK}.$(basename $(dirname $(dirname ${DATA})))
 
 EXTRAARGS="--scoring sacrebleu --sacrebleu-tokenizer 13a --sacrebleu-lowercase"
 GENARGS="--beam 1 --max-len-a 1.2 --max-len-b 10 --remove-bpe sentencepiece"
@@ -16,4 +17,5 @@ python -m fairseq_cli.generate ${DATA} \
   --path ${CHECKDIR}/${CHECKPOINT_FILENAME} \
   --max-tokens 8000 --fp16 \
   --model-overrides '{"load_pretrained_encoder_from": None, "load_pretrained_decoder_from": None}' \
+  --results-path ${RESULT} \
   ${GENARGS} ${EXTRAARGS}

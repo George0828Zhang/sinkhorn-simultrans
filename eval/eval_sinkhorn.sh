@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-TASK=sinkhorn_delay1
-SPLIT=valid
-EXP=../exp
+TASK=sinkhorn_delay1_eos
+SPLIT=test
+EXP=../expiwslt
 . ${EXP}/data_path.sh
 CHECKDIR=${EXP}/checkpoints/${TASK}
-CHECKPOINT_FILENAME=avg_best_5_checkpoint.pt
+CHECKPOINT_FILENAME=checkpoint_best.pt
+RESULT=${TASK}.$(basename $(dirname $(dirname ${DATA})))
 
 EXTRAARGS="--scoring sacrebleu --sacrebleu-tokenizer 13a --sacrebleu-lowercase"
-GENARGS="--from-encoder --remove-bpe sentencepiece"
+GENARGS="--remove-bpe sentencepiece"
 # --from-encoder
 
 python -m fairseq_cli.generate ${DATA} \
@@ -17,4 +18,5 @@ python -m fairseq_cli.generate ${DATA} \
   --path ${CHECKDIR}/${CHECKPOINT_FILENAME} \
   --max-tokens 8000 --fp16 \
   --model-overrides '{"load_pretrained_encoder_from": None, "load_pretrained_decoder_from": None}' \
+  --results-path ${RESULT} \
   ${GENARGS} ${EXTRAARGS}

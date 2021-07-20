@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-TASK=wait_1_deen_distill
-SPLIT=valid
+TASK=wait_1_iwslt_deen
+SPLIT=test
 AGENT=./agents/simul_t2t_waitk.py
-EXP=../exp
+EXP=../expiwslt
 . ${EXP}/data_path.sh
 CHECKDIR=${EXP}/checkpoints/${TASK}
 CHECKPOINT_FILENAME=checkpoint_best.pt
-SPM_MODEL=${DATA}/spm_unigram32000.model
+# SPM_MODEL=${DATA}/spm_unigram32000.model
+SPM_MODEL=${DATA}/spm_unigram8000.model
 LC=~/utility/mosesdecoder/scripts/tokenizer/lowercase.perl
 SRC_FILE=$(realpath ${DATA}/../prep/${SPLIT}.${SRC})
 TGT_FILE=$(realpath ${DATA}/../prep/${SPLIT}.${TGT})
-# SRC_FILE=debug/test.de
-# TGT_FILE=debug/test.en.lc
-OUTPUT=${TASK}.${SRC}-${TGT}.results
+# SRC_FILE=debug/tiny.de
+# TGT_FILE=debug/tiny.en
+OUTPUT=${TASK}.$(basename $(dirname $(dirname ${DATA})))
 
 if [ -f ${TGT_FILE}.lc ]; then
   echo "${TGT_FILE}.lc found, skipping lowercase."
@@ -33,7 +34,7 @@ simuleval \
   --tgt-splitter-path ${SPM_MODEL} \
   --output ${OUTPUT} \
   --sacrebleu-tokenizer 13a \
-  --incremental-encoder \
-  --force-finish \
   --scores \
   --test-waitk 1
+
+  # --incremental-encoder \

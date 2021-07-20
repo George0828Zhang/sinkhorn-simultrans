@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-TASK=sinkhorn_delay1
-SPLIT=valid
+TASK=sinkhorn_delay1_eos
+SPLIT=test
 AGENT=./agents/simul_t2t_sinkhorn.py
 EXP=../expiwslt
 . ${EXP}/data_path.sh
@@ -9,10 +9,10 @@ CHECKPOINT_FILENAME=checkpoint_best.pt
 # SPM_MODEL=${DATA}/spm_unigram32000.model
 SPM_MODEL=${DATA}/spm_unigram8000.model
 LC=~/utility/mosesdecoder/scripts/tokenizer/lowercase.perl
-# SRC_FILE=$(realpath ${DATA}/../prep/${SPLIT}.${SRC})
-# TGT_FILE=$(realpath ${DATA}/../prep/${SPLIT}.${TGT})
-SRC_FILE=debug/detok.de
-TGT_FILE=debug/detok.en
+SRC_FILE=$(realpath ${DATA}/../prep/${SPLIT}.${SRC})
+TGT_FILE=$(realpath ${DATA}/../prep/${SPLIT}.${TGT})
+# SRC_FILE=debug/detok.de
+# TGT_FILE=debug/detok.en
 OUTPUT=${TASK}.$(basename $(dirname $(dirname ${DATA})))
 
 if [ -f ${TGT_FILE}.lc ]; then
@@ -35,7 +35,5 @@ simuleval \
   --output ${OUTPUT} \
   --sacrebleu-tokenizer 13a \
   --incremental-encoder \
-  --force-finish \
   --scores \
-  --port 22068 \
   --test-waitk 1
