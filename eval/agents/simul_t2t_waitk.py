@@ -6,7 +6,6 @@
 # from torchinfo import summary
 import os
 import logging
-
 from fairseq import checkpoint_utils, tasks, utils
 import sentencepiece as spm
 import torch
@@ -61,7 +60,10 @@ class SimulTransTextAgentWaitk(TextAgent):
         return parser
 
     def __init__(self, args):
-        self.args = args
+
+        self.test_waitk = args.test_waitk
+        self.force_finish = args.force_finish
+        self.incremental_encoder = args.incremental_encoder
 
         # Whether use gpu
         self.gpu = getattr(args, "gpu", False)
@@ -75,11 +77,7 @@ class SimulTransTextAgentWaitk(TextAgent):
         self.eos = DEFAULT_EOS
 
         # Max len
-        self.max_len_a = args.max_len_a
-        self.max_len_b = args.max_len_b
-
-        self.force_finish = args.force_finish
-        self.incremental_encoder = args.incremental_encoder
+        self.max_len = lambda x: args.max_len_a * x + args.max_len_b
 
         torch.set_grad_enabled(False)
 
@@ -161,21 +159,26 @@ class SimulTransTextAgentWaitk(TextAgent):
         return self.spm['src'].EncodeAsPieces(segment)
 
     def update_model_encoder(self, states):
+        src_len = len(states.units.source)
+        enc_len = 0
 
-        if len(states.units.source) == 0:
-            return
+        if getattr(states, "encoder_states", None) is not None:
+            enc_len = states.encoder_states["encoder_out"][0].size(0)
 
         src_indices = [
             self.dict['src'].index(x)
             for x in states.units.source.value
         ]
 
-        run_eos = False
-        if states.finish_read() and src_indices[-1] != self.dict["tgt"].eos_index:
+        if states.finish_read() and src_indices[-1] != self.dict["tgt"].eos():
             # Append the eos index when the prediction is over
-            src_indices += [self.dict["tgt"].eos_index]
-            run_eos = True
+            src_indices += [self.dict["tgt"].eos()]
+            src_len += 1
             logger.debug("ADD EOS")
+
+        if src_len <= enc_len:
+            logger.debug("Redundant read")
+            return
 
         src_indices = self.to_device(
             torch.LongTensor(src_indices).unsqueeze(0)
@@ -184,19 +187,18 @@ class SimulTransTextAgentWaitk(TextAgent):
             torch.LongTensor([src_indices.size(1)])
         )
 
+        encoder_out = self.model.encoder(
+            src_indices,
+            src_lengths,
+            incremental_state=states.enc_incremental_states,
+            incremental_step=src_len - enc_len,
+        )
+
         if self.incremental_encoder:
-            encoder_out = self.model.encoder(
-                src_indices,
-                src_lengths,
-                incremental_state=states.enc_incremental_states,
-                incremental_step=2 if run_eos else 1,
-            )
-
-            # logger.debug(encoder_out["encoder_out"][0].shape)
-
             if getattr(states, "encoder_states", None) is None:
                 states.encoder_states = {
-                    "encoder_out": encoder_out["encoder_out"],  # List[T x B x C]
+                    # List[T x B x C]
+                    "encoder_out": encoder_out["encoder_out"],
                     "encoder_padding_mask": [],  # B x T
                     "encoder_embedding": [],  # B x T x C
                     "encoder_states": [],  # List[T x B x C]
@@ -229,7 +231,6 @@ class SimulTransTextAgentWaitk(TextAgent):
         subword that starts with BOW_PREFIX, then merge with subwords
         prior to this subword, remove them from queue, send to server.
         """
-
         # Merge sub word to full word.
         tgt_dict = self.dict["tgt"]
 
@@ -237,55 +238,59 @@ class SimulTransTextAgentWaitk(TextAgent):
         if tgt_dict.eos() == unit_queue[0]:
             return DEFAULT_EOS
 
+        string_to_return = None
+
+        def decode(tok_idx):
+            hyp = tgt_dict.string(
+                tok_idx,
+                "sentencepiece",
+            )
+            if self.pre_tokenizer is not None:
+                hyp = self.pre_tokenizer.decode(hyp)
+            return hyp
+
         # if force finish, there will be None's
         segment = []
         if None in unit_queue.value:
             unit_queue.value.remove(None)
 
-        def exceedmaxlen():
-            if not states.finish_read():
-                return False
-            src_len = states.encoder_states["encoder_out"][0].size(0)
-            tgt_len = len(states.units.target)
-            return tgt_len > (src_len * self.max_len_a + self.max_len_b)
-
+        src_len = len(states.units.source)
         if (
             (len(unit_queue) > 0 and tgt_dict.eos() == unit_queue[-1])
-            or exceedmaxlen()
+            or 
+            (states.finish_read() and len(states.units.target) > self.max_len(src_len))
         ):
-            hyp = tgt_dict.string(
-                unit_queue,
-                "sentencepiece",
-            )
-            if self.pre_tokenizer is not None:
-                hyp = self.pre_tokenizer.decode(hyp)
-            return [hyp] + [DEFAULT_EOS]
+            hyp = decode(unit_queue)
+            string_to_return = ([hyp] if hyp else []) + [DEFAULT_EOS]
+        else:
+            space_p = None
+            for p, unit_id in enumerate(unit_queue):
+                if p == 0:
+                    continue
+                token = tgt_dict.string([unit_id])
+                if token.startswith(BOW_PREFIX):
+                    """
+                    find the first tokens with escape symbol
+                    """
+                    space_p = p
+                    break
+            if space_p is not None:
+                for j in range(space_p):
+                    segment += [unit_queue.pop()]
 
-        for index in unit_queue:
-            token = tgt_dict.string([index])
-            if token.startswith(BOW_PREFIX):
-                if len(segment) == 0:
-                    segment += [token.replace(BOW_PREFIX, "")]
-                else:
-                    for j in range(len(segment)):
-                        unit_queue.pop()
+                hyp = decode(segment)
+                string_to_return = [hyp] if hyp else []
 
-                    string_to_return = ["".join(segment)]
+                if tgt_dict.eos() == unit_queue[0]:
+                    string_to_return += [DEFAULT_EOS]
 
-                    if tgt_dict.eos() == unit_queue[0]:
-                        string_to_return += [DEFAULT_EOS]
-
-                    return string_to_return
-            else:
-                segment += [token.replace(BOW_PREFIX, "")]
-
-        return None
+        return string_to_return
 
     def policy(self, states):
         if not getattr(states, "encoder_states", None):
             return READ_ACTION
 
-        waitk = self.args.test_waitk
+        waitk = self.test_waitk
         src_len = len(states.units.source)
         enc_len = 0
         tgt_len = len(states.units.target)
@@ -294,7 +299,6 @@ class SimulTransTextAgentWaitk(TextAgent):
             enc_len = states.encoder_states["encoder_out"][0].size(0)
 
         if src_len - tgt_len < waitk and not states.finish_read():
-            # logger.info(f"Read, src_len: {src_len} tgt_len: {tgt_len}")
             return READ_ACTION
         else:
             if states.finish_read() and enc_len < src_len + 1:
@@ -304,7 +308,7 @@ class SimulTransTextAgentWaitk(TextAgent):
 
             tgt_indices = self.to_device(
                 torch.LongTensor(
-                    [self.model.decoder.dictionary.eos()]
+                    [self.dict["tgt"].eos()]
                     + [x for x in states.units.target.value if x is not None]
                 ).unsqueeze(0)
             )
@@ -317,17 +321,14 @@ class SimulTransTextAgentWaitk(TextAgent):
 
             states.decoder_out = logits
 
-            states.decoder_out_extra = extra
-
             torch.cuda.empty_cache()
 
             return WRITE_ACTION
 
     def predict(self, states):
-        decoder_states = states.decoder_out
 
         lprobs = self.model.get_normalized_probs(
-            [decoder_states[:, -1:]], log_probs=True
+            [states.decoder_out[:, -1:]], log_probs=True
         )
 
         index = lprobs.argmax(dim=-1)
@@ -336,7 +337,7 @@ class SimulTransTextAgentWaitk(TextAgent):
 
         if (
             self.force_finish
-            and index == self.model.decoder.dictionary.eos()
+            and index == self.dict["tgt"].eos()
             and not states.finish_read()
         ):
             # If we want to force finish the translation
