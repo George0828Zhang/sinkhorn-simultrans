@@ -62,8 +62,6 @@ class CausalTransformerEncoder(TransformerEncoder):
         token_embeddings: Optional[torch.Tensor] = None,  # not used
     ):
         """ Same as parent but with incremental_states """
-        # import pdb
-        # pdb.set_trace()
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
         has_pads = src_tokens.device.type == "xla" or encoder_padding_mask.any()
@@ -72,9 +70,31 @@ class CausalTransformerEncoder(TransformerEncoder):
         # embed positions
         positions = None
         if self.embed_positions is not None:
+            # incremental_state for embed_positions is designed for single step.
+            # # slow
+            # positions = self.embed_positions(
+            #     src_tokens,  # incremental_state=incremental_state
+            # )
+            # fast
             positions = self.embed_positions(
-                src_tokens, incremental_state=incremental_state
+                src_tokens,
+                incremental_state=incremental_state,
+                timestep=torch.LongTensor(
+                    [src_tokens.size(1) - incremental_step])
             )
+            if incremental_step > 1:
+                for i in range(1, incremental_step):
+                    timestep = src_tokens.size(1) - incremental_step + i
+                    positions = torch.cat(
+                        (
+                            positions,
+                            self.embed_positions(
+                                src_tokens,
+                                incremental_state=incremental_state,
+                                timestep=torch.LongTensor([timestep])
+                            )
+                        ), dim=1
+                    )
 
         if incremental_state is not None:
             src_tokens = src_tokens[:, -incremental_step:]
