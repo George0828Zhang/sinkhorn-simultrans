@@ -433,11 +433,15 @@ class SinkhornCascadedEncoder(FairseqEncoder):
 
     def forward_causal(
         self, src_tokens, src_lengths,
-        return_all_hiddens: bool = False
+        return_all_hiddens: bool = False,
+        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
+        incremental_step: Optional[int] = 1,
     ):
         causal_out = self.causal_encoder(
             src_tokens, src_lengths,
-            return_all_hiddens=return_all_hiddens
+            return_all_hiddens=return_all_hiddens,
+            incremental_state=incremental_state,
+            incremental_step=incremental_step
         )
         x = causal_out["encoder_out"][0]
         encoder_padding_mask = causal_out["encoder_padding_mask"][0] \
