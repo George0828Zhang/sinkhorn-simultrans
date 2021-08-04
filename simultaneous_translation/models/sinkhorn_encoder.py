@@ -4,6 +4,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import math
 import logging
 from typing import Dict, List, Optional, Tuple
 
@@ -25,14 +26,20 @@ from fairseq.models.transformer import (
     Linear,
     base_architecture,
 )
-from fairseq.modules import LayerNorm
+from fairseq.modules import (
+    LayerNorm,
+    PositionalEmbedding,
+    TransformerDecoderLayer
+)
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
 # user
-from simultaneous_translation.models.nat_generate import generate
+from simultaneous_translation.models.nat_utils import (
+    generate,
+    inject_noise
+)
 from simultaneous_translation.modules import (
     CausalTransformerEncoderLayer,
-    NonCausalTransformerEncoderLayer,
     SinkhornAttention,
 )
 
@@ -244,9 +251,26 @@ class SinkhornEncoderModel(FairseqEncoderModel):
         parser.add_argument(
             '--delay', type=int, help='delay for incremental reading')
 
+        parser.add_argument(
+            "--mask-ratio",
+            required=True,
+            type=float,
+            help=(
+                'ratio of target tokens to mask when feeding to sorting network.'
+            ),
+        )
+        parser.add_argument(
+            "--mask-uniform",
+            action="store_true",
+            default=False,
+            help=(
+                'ratio of target tokens to mask when feeding to aligner.'
+            ),
+        )
+
     @classmethod
-    def build_encoder(cls, args, src_dict, embed_tokens):
-        encoder = CausalTransformerEncoder(args, src_dict, embed_tokens)
+    def build_encoder(cls, args, src_dict, tgt_dict, encoder_embed_tokens, decoder_embed_tokens):
+        encoder = CausalTransformerEncoder(args, src_dict, encoder_embed_tokens)
         encoder.apply(init_bert_params)
         if getattr(args, "load_pretrained_encoder_from", None):
             encoder = checkpoint_utils.load_pretrained_component_from_model(
@@ -256,7 +280,7 @@ class SinkhornEncoderModel(FairseqEncoderModel):
                 f"loaded pretrained encoder from: "
                 f"{args.load_pretrained_encoder_from}"
             )
-        cascade = SinkhornCascadedEncoder(args, encoder)
+        cascade = SinkhornCascadedEncoder(args, encoder, tgt_dict, decoder_embed_tokens)
         return cascade
 
     @classmethod
@@ -264,19 +288,24 @@ class SinkhornEncoderModel(FairseqEncoderModel):
         """Build a new model instance."""
 
         src_dict = task.source_dictionary
+        tgt_dict = task.target_dictionary
+
         encoder_embed_tokens = cls.build_embedding(
             args, src_dict, args.encoder_embed_dim, args.encoder_embed_path
         )
+        decoder_embed_tokens = cls.build_embedding(
+            args, tgt_dict, args.decoder_embed_dim, args.decoder_embed_path
+        )
 
         output_projection = nn.Linear(
-            args.encoder_embed_dim, len(task.target_dictionary), bias=False
+            decoder_embed_tokens.weight.shape[1],
+            decoder_embed_tokens.weight.shape[0],
+            bias=False
         )
-        nn.init.normal_(
-            output_projection.weight, mean=0, std=args.encoder_embed_dim ** -0.5
-        )
+        output_projection.weight = decoder_embed_tokens.weight
 
-        encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens)
-        # decoder = cls.build_decoder(args, task, decoder_embed_tokens)
+        encoder = cls.build_encoder(
+            args, src_dict, tgt_dict, encoder_embed_tokens, decoder_embed_tokens)
         return cls(encoder, output_projection)
 
     @classmethod
@@ -319,7 +348,7 @@ class SinkhornEncoderModel(FairseqEncoderModel):
         return_all_hiddens: bool = False,
         **unused,
     ):
-        encoder_out = self.encoder.forward_causal(
+        encoder_out = self.encoder.forward(
             src_tokens=src_tokens,
             src_lengths=src_lengths,
             return_all_hiddens=return_all_hiddens
@@ -337,11 +366,12 @@ class SinkhornEncoderModel(FairseqEncoderModel):
         }
         return x, extra
 
-    def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False, **unused):
+    def forward(self, src_tokens, src_lengths, prev_output_tokens, return_all_hiddens: bool = False, **unused):
 
-        encoder_out = self.encoder(
+        encoder_out = self.encoder.forward_train(
             src_tokens=src_tokens,
             src_lengths=src_lengths,
+            prev_output_tokens=prev_output_tokens,
             return_all_hiddens=return_all_hiddens
         )
         x = self.output_projection(encoder_out["encoder_out"][0])
@@ -362,8 +392,8 @@ class SinkhornEncoderModel(FairseqEncoderModel):
         return self.output_projection
 
     def generate(self, src_tokens, src_lengths, blank_idx=0, from_encoder=False, **unused):
-        if not from_encoder:
-            return generate(self, src_tokens, src_lengths, blank_idx=blank_idx)
+        # if not from_encoder:
+        #     return generate(self, src_tokens, src_lengths, blank_idx=blank_idx)
         logits, extra = self.forward_causal(src_tokens, src_lengths, None)
         return generate(self, src_tokens, src_lengths, net_output=(logits, extra), blank_idx=blank_idx)
 
@@ -378,11 +408,12 @@ class SinkhornCascadedEncoder(FairseqEncoder):
     1) several non-causal encoder layers
     2) 1 sinkhorn layer attention
     """
-    def __init__(self, args, causal_encoder):
+
+    def __init__(self, args, causal_encoder, tgt_dict, decoder_embed_tokens):
         super().__init__(None)
         self.causal_encoder = causal_encoder
         self.non_causal_layers = nn.ModuleList([
-            NonCausalTransformerEncoderLayer(args) for i in range(args.non_causal_layers)
+            TransformerDecoderLayer(args) for i in range(args.non_causal_layers)
         ])
         export = getattr(args, "export", False)
         if args.encoder_normalize_before:
@@ -406,6 +437,26 @@ class SinkhornCascadedEncoder(FairseqEncoder):
         if self.upsample_ratio > 1:
             self.upsampler = Linear(
                 args.encoder_embed_dim, args.encoder_embed_dim * self.upsample_ratio)
+
+        # below are for input target feeding
+        self.mask_ratio = args.mask_ratio
+        self.mask_uniform = args.mask_uniform
+
+        self.tgt_dict = tgt_dict
+        self.decoder_embed_tokens = decoder_embed_tokens
+
+        self.decoder_embed_scale = 1.0 if args.no_scale_embedding else math.sqrt(
+            args.decoder_embed_dim)
+        self.decoder_embed_positions = (
+            PositionalEmbedding(
+                args.max_target_positions,  # this pos is for target tokens
+                args.encoder_embed_dim,
+                tgt_dict.pad(),
+                learned=args.decoder_learned_pos,
+            )
+            if not args.no_token_positional_embeddings
+            else None
+        )
 
     def upsample(self, x, encoder_padding_mask):
         if self.upsample_ratio == 1:
@@ -431,7 +482,7 @@ class SinkhornCascadedEncoder(FairseqEncoder):
         ).view(-1, B, C)
         return x, encoder_padding_mask
 
-    def forward_causal(
+    def forward(
         self, src_tokens, src_lengths,
         return_all_hiddens: bool = False,
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
@@ -455,7 +506,11 @@ class SinkhornCascadedEncoder(FairseqEncoder):
         })
         return causal_out
 
-    def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False):
+    def forward_train(
+        self, src_tokens, src_lengths,
+        prev_output_tokens,
+        return_all_hiddens: bool = False
+    ):
         """ Added non-causal forwards and sinkhorn fusion """
         causal_out = self.causal_encoder(src_tokens, src_lengths, return_all_hiddens=return_all_hiddens)
 
@@ -465,9 +520,27 @@ class SinkhornCascadedEncoder(FairseqEncoder):
             if len(causal_out["encoder_padding_mask"]) > 0 else None
         encoder_states = causal_out["encoder_states"]
 
+        # target feeding (noise + pos emb)
+        prev_tokens, prev_padding_mask = inject_noise(
+            prev_output_tokens,
+            self.tgt_dict,
+            ratio=self.mask_ratio,
+            uniform=self.mask_uniform,
+        )
+
+        prev_states = self.decoder_embed_scale * self.decoder_embed_tokens(prev_tokens)
+        prev_states += self.decoder_embed_positions(prev_tokens)
+        prev_states = prev_states.transpose(0, 1)
+
         # forward non-causal layers
         for layer in self.non_causal_layers:
-            x = layer(x, encoder_padding_mask)
+            # x = layer(x, encoder_padding_mask)
+            x, _, _ = layer(
+                x,
+                prev_states,
+                prev_padding_mask,
+                self_attn_padding_mask=encoder_padding_mask,
+            )
             if return_all_hiddens:
                 assert encoder_states is not None
                 encoder_states.append(x)
@@ -528,10 +601,11 @@ def sinkhorn_encoder(args):
 
 
 @register_model_architecture(
-    "sinkhorn_encoder", "sinkhorn_encoder_iwslt"
+    "sinkhorn_encoder", "sinkhorn_encoder_small"
 )
-def sinkhorn_encoder_iwslt(args):
+def sinkhorn_encoder_small(args):
     args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 256)
+    args.decoder_embed_dim = args.encoder_embed_dim
     args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", 2048)
     args.encoder_layers = getattr(args, "encoder_layers", 5)
     args.encoder_attention_heads = getattr(args, "encoder_attention_heads", 4)
@@ -557,6 +631,7 @@ def sinkhorn_encoder_iwslt(args):
 )
 def sinkhorn_encoder_toy(args):
     args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 256)
+    args.decoder_embed_dim = args.encoder_embed_dim
     args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", 1024)
     args.encoder_layers = getattr(args, "encoder_layers", 3)
     args.encoder_attention_heads = getattr(args, "encoder_attention_heads", 4)

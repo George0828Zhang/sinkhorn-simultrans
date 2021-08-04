@@ -1,6 +1,41 @@
 import torch
 from typing import Dict, List
 from torch import Tensor
+from fairseq.utils import new_arange
+
+
+def inject_noise(target_tokens, dictionary, ratio=-1, uniform=False):
+    """ mask out tokens. uniform: uniform length masking """
+    pad = dictionary.pad()
+    bos = dictionary.bos()
+    eos = dictionary.eos()
+    unk = dictionary.unk()
+
+    if not uniform:
+        assert 0 <= ratio <= 1, "mask ratio invalid."
+        if ratio == 0:
+            return target_tokens, target_tokens.eq(pad)
+
+    target_masks = (
+        target_tokens.ne(pad) & target_tokens.ne(bos) & target_tokens.ne(eos)
+    )
+    target_score = target_tokens.clone().float().uniform_()
+    target_score.masked_fill_(~target_masks, 2.0)
+    target_length = target_masks.sum(1).float()
+    if uniform:
+        target_length = target_length * target_length.clone().uniform_()
+    else:
+        target_length = target_length * target_length.clone().fill_(ratio)
+    target_length = target_length + 1  # make sure to mask at least one token.
+
+    _, target_rank = target_score.sort(1)
+    target_cutoff = new_arange(target_rank) < target_length[:, None].long()
+    prev_target_tokens = target_tokens.masked_fill(
+        target_cutoff.scatter(1, target_rank, target_cutoff), unk
+    )
+
+    prev_padding_mask = prev_target_tokens.eq(pad)
+    return prev_target_tokens, prev_padding_mask
 
 
 def generate(model, src_tokens, src_lengths, net_output=None, blank_idx=0, collapse=True, **unused):
