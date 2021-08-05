@@ -55,6 +55,8 @@ class SimulTransTextAgentWaitk(TextAgent):
         parser.add_argument("--test-waitk", type=int, default=1)
         parser.add_argument("--incremental-encoder", default=False, action="store_true",
                             help="Update the model incrementally without recomputation of history.")
+        parser.add_argument("--segment-type", type=str, default="word", choices=["word", "char"],
+                            help="Agent can send a word or a char to server at a time.")
 
         # fmt: on
         return parser
@@ -64,6 +66,7 @@ class SimulTransTextAgentWaitk(TextAgent):
         self.test_waitk = args.test_waitk
         self.force_finish = args.force_finish
         self.incremental_encoder = args.incremental_encoder
+        self.segment_type = args.segment_type
 
         # Whether use gpu
         self.gpu = getattr(args, "gpu", False)
@@ -223,7 +226,7 @@ class SimulTransTextAgentWaitk(TextAgent):
         self.update_model_encoder(states)
 
     def units_to_segment(self, unit_queue, states):
-        """
+        """Merge sub word to full word.
         queue: stores bpe tokens.
         server: accept words.
 
@@ -231,7 +234,8 @@ class SimulTransTextAgentWaitk(TextAgent):
         subword that starts with BOW_PREFIX, then merge with subwords
         prior to this subword, remove them from queue, send to server.
         """
-        # Merge sub word to full word.
+        if self.segment_type == "char":
+            return self.units_to_segment_char(unit_queue, states)
         tgt_dict = self.dict["tgt"]
 
         # if segment starts with eos, send EOS
@@ -285,6 +289,28 @@ class SimulTransTextAgentWaitk(TextAgent):
                     string_to_return += [DEFAULT_EOS]
 
         return string_to_return
+
+    def units_to_segment_char(self, unit_queue, states):
+        """ For chinese, direclty send tokens. """
+
+        tgt_dict = self.dict["tgt"]
+
+        if None in unit_queue.value:
+            unit_queue.value.remove(None)
+
+        src_len = len(states.units.source)
+        if (
+            (len(unit_queue) > 0 and tgt_dict.eos() == unit_queue[-1])
+            or
+            (states.finish_read() and len(states.units.target) > self.max_len(src_len))
+        ):
+            return DEFAULT_EOS
+
+        unit_id = unit_queue.value.pop()
+        token = tgt_dict.string([unit_id])
+
+        # even if replace with space, it will be stripped by the server :(
+        return token.replace(BOW_PREFIX, "")
 
     def policy(self, states):
         if not getattr(states, "encoder_states", None):
