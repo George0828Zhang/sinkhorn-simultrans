@@ -142,6 +142,17 @@ class SinkhornAttention(nn.Module):
 
         self.reset_parameters()
 
+    def extra_repr(self):
+        s = "dim={}, bucket_size={}, tau={}, iters={}, noise_factor={}, energy_fn={}".format(
+            self.embed_dim,
+            self.bucket_size,
+            self.tau,
+            self.iters,
+            self.noise_factor,
+            self.energy_fn,
+        )
+        return s
+
     def reset_parameters(self):
         # Empirically observed the convergence to be much better with
         # the scaled initialization

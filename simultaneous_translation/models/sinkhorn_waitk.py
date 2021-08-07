@@ -16,8 +16,11 @@ from fairseq.models import (
     register_model_architecture
 )
 from fairseq.models.transformer import (
-    base_architecture
+    base_architecture,
+    DEFAULT_MAX_SOURCE_POSITIONS,
+    DEFAULT_MAX_TARGET_POSITIONS
 )
+from fairseq.modules.transformer_sentence_encoder import init_bert_params
 # user
 from .waitk_transformer import (
     CausalTransformerEncoder,
@@ -87,10 +90,28 @@ class SinkhornWaitkTransformerModel(WaitkTransformerModel):
                 'type of energy function to use to calculate attention. available: dot, cos, L2'
             ),
         )
+        parser.add_argument(
+            "--mask-ratio",
+            required=True,
+            type=float,
+            help=(
+                'ratio of target tokens to mask when feeding to sorting network.'
+            ),
+        )
+        parser.add_argument(
+            "--mask-uniform",
+            action="store_true",
+            default=False,
+            help=(
+                'ratio of target tokens to mask when feeding to aligner.'
+            ),
+        )
 
     @classmethod
-    def build_encoder(cls, args, src_dict, embed_tokens):
-        encoder = CausalTransformerEncoder(args, src_dict, embed_tokens)
+    def build_encoder(cls, args, src_dict, tgt_dict, encoder_embed_tokens, decoder_embed_tokens):
+        encoder = CausalTransformerEncoder(
+            args, src_dict, encoder_embed_tokens)
+        encoder.apply(init_bert_params)
         if getattr(args, "load_pretrained_encoder_from", None):
             encoder = checkpoint_utils.load_pretrained_component_from_model(
                 component=encoder, checkpoint=args.load_pretrained_encoder_from
@@ -99,12 +120,70 @@ class SinkhornWaitkTransformerModel(WaitkTransformerModel):
                 f"loaded pretrained encoder from: "
                 f"{args.load_pretrained_encoder_from}"
             )
-        cascade = SinkhornCascadedEncoderSlice(args, encoder)
+        cascade = SinkhornCascadedEncoderSlice(
+            args, encoder, tgt_dict, decoder_embed_tokens)
         return cascade
+
+    @classmethod
+    def build_model(cls, args, task):
+        """Build a new model instance."""
+
+        # make sure all arguments are present in older models
+        base_architecture(args)
+
+        if args.encoder_layers_to_keep:
+            args.encoder_layers = len(args.encoder_layers_to_keep.split(","))
+        if args.decoder_layers_to_keep:
+            args.decoder_layers = len(args.decoder_layers_to_keep.split(","))
+
+        if getattr(args, "max_source_positions", None) is None:
+            args.max_source_positions = DEFAULT_MAX_SOURCE_POSITIONS
+        if getattr(args, "max_target_positions", None) is None:
+            args.max_target_positions = DEFAULT_MAX_TARGET_POSITIONS
+
+        src_dict, tgt_dict = task.source_dictionary, task.target_dictionary
+
+        if args.share_all_embeddings:
+            if src_dict != tgt_dict:
+                raise ValueError(
+                    "--share-all-embeddings requires a joined dictionary")
+            if args.encoder_embed_dim != args.decoder_embed_dim:
+                raise ValueError(
+                    "--share-all-embeddings requires --encoder-embed-dim to match --decoder-embed-dim"
+                )
+            if args.decoder_embed_path and (
+                args.decoder_embed_path != args.encoder_embed_path
+            ):
+                raise ValueError(
+                    "--share-all-embeddings not compatible with --decoder-embed-path"
+                )
+            encoder_embed_tokens = cls.build_embedding(
+                args, src_dict, args.encoder_embed_dim, args.encoder_embed_path
+            )
+            decoder_embed_tokens = encoder_embed_tokens
+            args.share_decoder_input_output_embed = True
+        else:
+            encoder_embed_tokens = cls.build_embedding(
+                args, src_dict, args.encoder_embed_dim, args.encoder_embed_path
+            )
+            decoder_embed_tokens = cls.build_embedding(
+                args, tgt_dict, args.decoder_embed_dim, args.decoder_embed_path
+            )
+        if getattr(args, "offload_activations", False):
+            args.checkpoint_activations = True  # offloading implies checkpointing
+        encoder = cls.build_encoder(
+            args, src_dict, tgt_dict, encoder_embed_tokens, decoder_embed_tokens)
+        decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens)
+
+        return cls(args, encoder, decoder)
 
     def forward(self, src_tokens, src_lengths, prev_output_tokens):
         """ changed encoder forward to forward_train """
-        encoder_out = self.encoder.forward_train(src_tokens=src_tokens, src_lengths=src_lengths)
+        encoder_out = self.encoder.forward_train(
+            src_tokens=src_tokens,
+            src_lengths=src_lengths,
+            prev_output_tokens=prev_output_tokens,
+        )
         x, extra = self.decoder(
             prev_output_tokens=prev_output_tokens,
             encoder_out=encoder_out,
@@ -121,12 +200,6 @@ class SinkhornCascadedEncoderSlice(SinkhornCascadedEncoder):
     def slice_encoder_out(self, encoder_out, context_size):
         return self.causal_encoder.slice_encoder_out(encoder_out, context_size)
 
-    def forward_train(self, *args, **kwargs):
-        return super().forward(*args, **kwargs)
-
-    def forward(self, *args, **kwargs):
-        return super().forward_causal(*args, **kwargs)
-
 
 @register_model_architecture(
     "sinkhorn_waitk", "sinkhorn_waitk"
@@ -137,7 +210,7 @@ def sinkhorn_waitk(args):
     args.max_source_positions = getattr(args, "max_source_positions", 1024)
     args.max_target_positions = getattr(args, "max_target_positions", 1024)
 
-    args.non_causal_layers = getattr(args, "non_causal_layers", 2)
+    args.non_causal_layers = getattr(args, "non_causal_layers", 3)
     args.dropout = getattr(args, "dropout", 0.1)
 
     args.share_decoder_input_output_embed = True

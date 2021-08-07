@@ -45,7 +45,7 @@ class CausalEncoderModel(SinkhornEncoderModel):
 
     def forward(self, src_tokens, src_lengths, return_all_hiddens: bool = False, **unused):
 
-        encoder_out = self.encoder.forward_causal(
+        encoder_out = self.encoder.forward(
             src_tokens=src_tokens,
             src_lengths=src_lengths,
             return_all_hiddens=return_all_hiddens
@@ -74,6 +74,8 @@ def causal_encoder(args):
     args.sinkhorn_noise_factor = 0
     args.sinkhorn_bucket_size = 1
     args.sinkhorn_energy = "dot"
+    args.mask_ratio = 1
+    args.mask_uniform = False
 
     sinkhorn_encoder(args)
 

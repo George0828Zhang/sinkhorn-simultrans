@@ -586,7 +586,7 @@ class SinkhornCascadedEncoder(FairseqEncoder):
 def sinkhorn_encoder(args):
     args.encoder_normalize_before = getattr(
         args, "encoder_normalize_before", True)
-    args.non_causal_layers = getattr(args, "non_causal_layers", 6)
+    args.non_causal_layers = getattr(args, "non_causal_layers", 3)
 
     args.max_source_positions = getattr(args, "max_source_positions", 1024)
     args.max_target_positions = getattr(args, "max_target_positions", 1024)
@@ -612,7 +612,7 @@ def sinkhorn_encoder_small(args):
 
     args.encoder_normalize_before = getattr(
         args, "encoder_normalize_before", True)
-    args.non_causal_layers = getattr(args, "non_causal_layers", 5)
+    args.non_causal_layers = getattr(args, "non_causal_layers", 3)
 
     args.max_source_positions = getattr(args, "max_source_positions", 1024)
     args.max_target_positions = getattr(args, "max_target_positions", 1024)
