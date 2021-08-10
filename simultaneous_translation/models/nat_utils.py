@@ -4,12 +4,23 @@ from torch import Tensor
 from fairseq.utils import new_arange
 
 
-def inject_noise(target_tokens, dictionary, ratio=-1, uniform=False):
+def inject_noise(prev_output_tokens, dictionary, ratio=-1, uniform=False):
     """ mask out tokens. uniform: uniform length masking """
     pad = dictionary.pad()
     bos = dictionary.bos()
     eos = dictionary.eos()
     unk = dictionary.unk()
+
+    # move eos to the back
+    N, T = prev_output_tokens.shape[:2]
+    target_tokens = torch.cat(
+        (
+            prev_output_tokens[:, 1:],
+            prev_output_tokens.new_full((N, 1), pad)
+        ), dim=1
+    )
+    target_length = target_tokens.ne(pad).sum(1, keepdim=True)
+    target_tokens.scatter_(1, target_length, eos)
 
     if not uniform:
         assert 0 <= ratio <= 1, "mask ratio invalid."
@@ -30,12 +41,11 @@ def inject_noise(target_tokens, dictionary, ratio=-1, uniform=False):
 
     _, target_rank = target_score.sort(1)
     target_cutoff = new_arange(target_rank) < target_length[:, None].long()
-    prev_target_tokens = target_tokens.masked_fill(
+    target_tokens.masked_fill_(
         target_cutoff.scatter(1, target_rank, target_cutoff), unk
     )
 
-    prev_padding_mask = prev_target_tokens.eq(pad)
-    return prev_target_tokens, prev_padding_mask
+    return target_tokens, target_tokens.eq(pad)
 
 
 def generate(model, src_tokens, src_lengths, net_output=None, blank_idx=0, collapse=True, **unused):
