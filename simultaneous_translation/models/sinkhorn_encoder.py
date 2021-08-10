@@ -46,138 +46,10 @@ from simultaneous_translation.modules import (
 logger = logging.getLogger(__name__)
 
 
-class CausalTransformerEncoder(TransformerEncoder):
-    """Transformer encoder that consists of causal attention.
-    """
-    def __init__(self, args, dictionary, embed_tokens):
-        super().__init__(args, dictionary, embed_tokens)
-        self.delay = args.delay
-        self.layers = nn.ModuleList([
-            CausalTransformerEncoderLayer(args, delay=args.delay)
-        ])
-        self.layers.extend(
-            [CausalTransformerEncoderLayer(args) for i in range(args.encoder_layers - 1)]
-        )
-
-    def forward(
-        self,
-        src_tokens,
-        src_lengths: Optional[torch.Tensor] = None,  # not used
-        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        incremental_step: Optional[int] = 1,
-        return_all_hiddens: bool = False,
-        token_embeddings: Optional[torch.Tensor] = None,  # not used
-    ):
-        """ Same as parent but with incremental_states """
-        # compute padding mask
-        encoder_padding_mask = src_tokens.eq(self.padding_idx)
-        has_pads = src_tokens.device.type == "xla" or encoder_padding_mask.any()
-
-        # x, encoder_embedding = self.forward_embedding(src_tokens, token_embeddings)
-        # embed positions
-        positions = None
-        if self.embed_positions is not None:
-            # incremental_state for embed_positions is designed for single step.
-            # # slow
-            # positions = self.embed_positions(
-            #     src_tokens,  # incremental_state=incremental_state
-            # )
-            # fast
-            positions = self.embed_positions(
-                src_tokens,
-                incremental_state=incremental_state,
-                timestep=torch.LongTensor(
-                    [src_tokens.size(1) - incremental_step])
-            )
-            if incremental_step > 1:
-                for i in range(1, incremental_step):
-                    timestep = src_tokens.size(1) - incremental_step + i
-                    positions = torch.cat(
-                        (
-                            positions,
-                            self.embed_positions(
-                                src_tokens,
-                                incremental_state=incremental_state,
-                                timestep=torch.LongTensor([timestep])
-                            )
-                        ), dim=1
-                    )
-
-        if incremental_state is not None:
-            src_tokens = src_tokens[:, -incremental_step:]
-            if positions is not None:
-                positions = positions[:, -incremental_step:]
-            has_pads = False
-
-        # embed tokens and positions
-        x = encoder_embedding = self.embed_scale * self.embed_tokens(src_tokens)
-
-        if positions is not None:
-            x += positions
-
-        if self.layernorm_embedding is not None:
-            x = self.layernorm_embedding(x)
-
-        x = self.dropout_module(x)
-
-        # account for padding while computing the representation
-        if has_pads:
-            x = x * (1 - encoder_padding_mask.unsqueeze(-1).type_as(x))
-
-        # B x T x C -> T x B x C
-        x = x.transpose(0, 1)
-
-        encoder_states = []
-
-        if return_all_hiddens:
-            encoder_states.append(x)
-
-        # encoder layers
-        for layer in self.layers:
-            x = layer(
-                x,
-                encoder_padding_mask=encoder_padding_mask if has_pads else None,
-                incremental_state=incremental_state,
-            )
-            if return_all_hiddens:
-                assert encoder_states is not None
-                encoder_states.append(x)
-
-        if self.layer_norm is not None:
-            x = self.layer_norm(x)
-
-        return {
-            "encoder_out": [x],  # T x B x C
-            "encoder_padding_mask": [encoder_padding_mask],  # B x T
-            "encoder_embedding": [encoder_embedding],  # B x T x C
-            "encoder_states": encoder_states,  # List[T x B x C]
-            "src_tokens": [],
-            "src_lengths": [],
-        }
-
-    def clear_cache(
-        self,
-        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]],
-        end_id: Optional[int] = None,
-        keep: Optional[int] = None,
-    ):
-        """
-        Clear cache in the monotonic layers.
-        The cache is generated because of a forward pass of decode but no prediction.
-        end_id is the last idx of the layers
-        """
-        if end_id is None:
-            end_id = len(self.layers)
-
-        for index, layer in enumerate(self.layers):
-            if index < end_id:
-                layer.prune_incremental_state(incremental_state, keep)
-
-
 @register_model("sinkhorn_encoder")
 class SinkhornEncoderModel(FairseqEncoderModel):
     """
-    TransformerEncoder with a causal encoder and reorder module cascaded.
+    causal encoder + ASN + output projection
     """
 
     def __init__(self, encoder, output_projection):
@@ -280,7 +152,7 @@ class SinkhornEncoderModel(FairseqEncoderModel):
                 f"loaded pretrained encoder from: "
                 f"{args.load_pretrained_encoder_from}"
             )
-        cascade = SinkhornCascadedEncoder(args, encoder, tgt_dict, decoder_embed_tokens)
+        cascade = ASNAugmentedEncoder(args, encoder, tgt_dict, decoder_embed_tokens)
         return cascade
 
     @classmethod
@@ -402,11 +274,143 @@ class SinkhornEncoderModel(FairseqEncoderModel):
         return self.encoder.max_positions()
 
 
-class SinkhornCascadedEncoder(FairseqEncoder):
+class CausalTransformerEncoder(TransformerEncoder):
+    """Transformer encoder that consists of causal attention.
+    """
+
+    def __init__(self, args, dictionary, embed_tokens):
+        super().__init__(args, dictionary, embed_tokens)
+        self.delay = args.delay
+        self.layers = nn.ModuleList([
+            CausalTransformerEncoderLayer(args, delay=args.delay)
+        ])
+        self.layers.extend(
+            [CausalTransformerEncoderLayer(args)
+             for i in range(args.encoder_layers - 1)]
+        )
+
+    def forward(
+        self,
+        src_tokens,
+        src_lengths: Optional[torch.Tensor] = None,  # not used
+        incremental_state: Optional[Dict[str,
+                                         Dict[str, Optional[Tensor]]]] = None,
+        incremental_step: Optional[int] = 1,
+        return_all_hiddens: bool = False,
+        token_embeddings: Optional[torch.Tensor] = None,  # not used
+    ):
+        """ Same as parent but with incremental_states """
+        # compute padding mask
+        encoder_padding_mask = src_tokens.eq(self.padding_idx)
+        has_pads = src_tokens.device.type == "xla" or encoder_padding_mask.any()
+
+        # x, encoder_embedding = self.forward_embedding(src_tokens, token_embeddings)
+        # embed positions
+        positions = None
+        if self.embed_positions is not None:
+            # incremental_state for embed_positions is designed for single step.
+            # # slow
+            # positions = self.embed_positions(
+            #     src_tokens,  # incremental_state=incremental_state
+            # )
+            # fast
+            positions = self.embed_positions(
+                src_tokens,
+                incremental_state=incremental_state,
+                timestep=torch.LongTensor(
+                    [src_tokens.size(1) - incremental_step])
+            )
+            if incremental_step > 1:
+                for i in range(1, incremental_step):
+                    timestep = src_tokens.size(1) - incremental_step + i
+                    positions = torch.cat(
+                        (
+                            positions,
+                            self.embed_positions(
+                                src_tokens,
+                                incremental_state=incremental_state,
+                                timestep=torch.LongTensor([timestep])
+                            )
+                        ), dim=1
+                    )
+
+        if incremental_state is not None:
+            src_tokens = src_tokens[:, -incremental_step:]
+            if positions is not None:
+                positions = positions[:, -incremental_step:]
+            has_pads = False
+
+        # embed tokens and positions
+        x = encoder_embedding = self.embed_scale * \
+            self.embed_tokens(src_tokens)
+
+        if positions is not None:
+            x += positions
+
+        if self.layernorm_embedding is not None:
+            x = self.layernorm_embedding(x)
+
+        x = self.dropout_module(x)
+
+        # account for padding while computing the representation
+        if has_pads:
+            x = x * (1 - encoder_padding_mask.unsqueeze(-1).type_as(x))
+
+        # B x T x C -> T x B x C
+        x = x.transpose(0, 1)
+
+        encoder_states = []
+
+        if return_all_hiddens:
+            encoder_states.append(x)
+
+        # encoder layers
+        for layer in self.layers:
+            x = layer(
+                x,
+                encoder_padding_mask=encoder_padding_mask if has_pads else None,
+                incremental_state=incremental_state,
+            )
+            if return_all_hiddens:
+                assert encoder_states is not None
+                encoder_states.append(x)
+
+        if self.layer_norm is not None:
+            x = self.layer_norm(x)
+
+        return {
+            "encoder_out": [x],  # T x B x C
+            "encoder_padding_mask": [encoder_padding_mask],  # B x T
+            "encoder_embedding": [encoder_embedding],  # B x T x C
+            "encoder_states": encoder_states,  # List[T x B x C]
+            "src_tokens": [],
+            "src_lengths": [],
+        }
+
+    def clear_cache(
+        self,
+        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]],
+        end_id: Optional[int] = None,
+        keep: Optional[int] = None,
+    ):
+        """
+        Clear cache in the monotonic layers.
+        The cache is generated because of a forward pass of decode but no prediction.
+        end_id is the last idx of the layers
+        """
+        if end_id is None:
+            end_id = len(self.layers)
+
+        for index, layer in enumerate(self.layers):
+            if index < end_id:
+                layer.prune_incremental_state(incremental_state, keep)
+
+
+class ASNAugmentedEncoder(FairseqEncoder):
     """
     Add following layers to the causal encoder,
     1) several non-causal encoder layers
-    2) 1 sinkhorn layer attention
+    2) 1 sinkhorn attention
     """
 
     def __init__(self, args, causal_encoder, tgt_dict, decoder_embed_tokens):
@@ -511,7 +515,7 @@ class SinkhornCascadedEncoder(FairseqEncoder):
         prev_output_tokens,
         return_all_hiddens: bool = False
     ):
-        """ Added non-causal forwards and sinkhorn fusion """
+        """ Added forwards for non-causal and sinkhorn attention """
         causal_out = self.causal_encoder(src_tokens, src_lengths, return_all_hiddens=return_all_hiddens)
 
         # causal outputs
@@ -624,28 +628,3 @@ def sinkhorn_encoder_small(args):
     args.delay = getattr(args, "delay", 1)
 
     base_architecture(args)
-
-
-@register_model_architecture(
-    "sinkhorn_encoder", "sinkhorn_encoder_toy"
-)
-def sinkhorn_encoder_toy(args):
-    args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 256)
-    args.decoder_embed_dim = args.encoder_embed_dim
-    args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", 1024)
-    args.encoder_layers = getattr(args, "encoder_layers", 3)
-    args.encoder_attention_heads = getattr(args, "encoder_attention_heads", 4)
-    args.encoder_normalize_before = getattr(
-        args, "encoder_normalize_before", True)
-    args.max_source_positions = getattr(args, "max_source_positions", 1024)
-    args.max_target_positions = getattr(args, "max_target_positions", 512)
-
-    args.non_causal_layers = getattr(
-        args, "non_causal_layers", 2)  # 2 non-causal, 1 sinkhorn
-
-    args.dropout = getattr(args, "dropout", 0.1)
-    base_architecture(args)
-
-    args.encoder_log_penalty = False
-    args.upsample_ratio = getattr(args, "upsample_ratio", 1)
-    args.delay = getattr(args, "delay", 1)
