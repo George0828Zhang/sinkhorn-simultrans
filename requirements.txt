@@ -1,7 +1,4 @@
 torch>=1.8.1
-torchaudio>=0.8.1
-pandas
-soundfile
 editdistance
 sacrebleu
 sacremoses
@@ -9,4 +6,5 @@ sentencepiece
 tqdm
 tensorboard
 tensorboardX
-entmax
+wandb
+kaggle

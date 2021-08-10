@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Adapted from https://github.com/pytorch/fairseq/blob/master/examples/translation/prepare-wmt14en2de.sh
-DATA_ROOT=/media/george/Data/iwslt14
+DATA_ROOT=/media/george/Data/wmt15
 FAIRSEQ=~/utility/fairseq
 export PYTHONPATH="$FAIRSEQ:$PYTHONPATH"
 SCRIPTS=~/utility/mosesdecoder/scripts
@@ -12,17 +12,16 @@ vocab=32000
 vtype=unigram
 workers=4
 
-TOKENIZER=$SCRIPTS/tokenizer/tokenizer.perl
+# TOKENIZER=$SCRIPTS/tokenizer/tokenizer.perl
 CLEAN=$SCRIPTS/training/clean-corpus-n.perl
 NORM_PUNC=$SCRIPTS/tokenizer/normalize-punctuation.perl
 REM_NON_PRINT_CHAR=$SCRIPTS/tokenizer/remove-non-printing-char.perl
+LC=$SCRIPTS/tokenizer/lowercase.perl
 
 spm_train=$FAIRSEQ/scripts/spm_train.py
 spm_encode=$FAIRSEQ/scripts/spm_encode.py
 
 DATA=${DATA_ROOT}/${SRC}-${TGT}
-SPM_MODEL="Current"
-DICT=""
 
 URLS=(
     "https://www.statmt.org/wmt13/training-parallel-europarl-v7.tgz"
@@ -77,7 +76,8 @@ for l in ${SRC} ${TGT}; do
         echo "precprocess train $f.$l"
         cat $orig/$f.$l | \
             perl $NORM_PUNC $l | \
-            perl $REM_NON_PRINT_CHAR >> $prep/train.dirty.$l
+            perl $REM_NON_PRINT_CHAR | \
+            perl $LC >> $prep/train.dirty.$l
     done
 done
 
@@ -93,7 +93,8 @@ for l in ${SRC} ${TGT}; do
         sed -e 's/\s*<\/seg>\s*//g' | \
         sed -e "s/\’/\'/g" | \
         perl $NORM_PUNC $l | \
-        perl $REM_NON_PRINT_CHAR > $prep/valid.dirty.$l
+        perl $REM_NON_PRINT_CHAR | \
+        perl $LC > $prep/valid.dirty.$l
 done
 
 echo "pre-processing test data..."
@@ -108,99 +109,77 @@ for l in ${SRC} ${TGT}; do
         sed -e 's/\s*<\/seg>\s*//g' | \
         sed -e "s/\’/\'/g" | \
         perl $NORM_PUNC $l | \
-        perl $REM_NON_PRINT_CHAR > $prep/test.$l
+        perl $REM_NON_PRINT_CHAR | \
+        perl $LC > $prep/test.$l
 done
 
-# clean too short too long
-perl $CLEAN -ratio 1.5 $prep/train.dirty ${SRC} ${TGT} $prep/train 1 1000
-perl $CLEAN -ratio 1.5 $prep/valid.dirty ${SRC} ${TGT} $prep/valid 1 1000
-# for l in ${SRC} ${TGT}; do
-#     echo 'no cleaning applied.'
-#     rm -f $prep/train.$l
-#     ln -s $prep/train.dirty.$l $prep/train.$l
-# done
+# filter empty pairs
+perl $CLEAN -ratio 1000 $prep/train.dirty ${SRC} ${TGT} $prep/train 1 10000
+perl $CLEAN -ratio 1000 $prep/valid.dirty ${SRC} ${TGT} $prep/valid 1 10000
 
+# SPM
+SPM_PREFIX=$prep/spm_${vtype}${vocab}
+for l in ${SRC} ${TGT}; do
+    SPM_MODEL=${SPM_PREFIX}_${l}.model
+    DICT=${SPM_PREFIX}_${l}.txt
+    BPE_TRAIN=$prep/bpe-train.$l
 
-# # SPM
-if [[ -z "$SPM_MODEL" ]]; then
-    echo "Don't apply SPM."
-else
-    if [[ "$SPM_MODEL" == "Current" ]]; then
-        echo "Didn't provide SPM model, learn on current dataset"
-
-        SPM_PREFIX=$prep/spm_${vtype}${vocab}
-        SPM_MODEL=$SPM_PREFIX.model
-        DICT=$SPM_PREFIX.txt
-        BPE_TRAIN=$prep/all.bpe-train
-
-        if [ -f $SPM_MODEL ]; then
-            echo "SPM model: $SPM_MODEL exists, skip learning"
+    if [[ ! -f $SPM_MODEL ]]; then
+        if [ -f $BPE_TRAIN ]; then
+            echo "$BPE_TRAIN found, skipping concat."
         else
-            if [ -f $BPE_TRAIN ]; then
-                echo "$BPE_TRAIN found, skipping concat."
+            train=$prep/train.$l
+            default=1000000
+            total=$(cat $train | wc -l)
+            echo "lang $l total: $total."
+            if [ "$total" -gt "$default" ]; then
+                cat $train | \
+                shuf -r -n $default >> $BPE_TRAIN
             else
-                for l in ${SRC} ${TGT}; do \
-                    train=$prep/train.$l
-                    valid=$prep/valid.$l
-                    default=1000000
-                    total=$(cat $train $valid | wc -l)
-                    echo "lang $l total: $total."
-                    if [ "$total" -gt "$default" ]; then
-                        cat $train $valid | \
-                        shuf -r -n $default >> $BPE_TRAIN
-                    else
-                        cat $train $valid >> $BPE_TRAIN
-                    fi                    
-                done
-            fi
+                cat $train >> $BPE_TRAIN
+            fi     
+        fi               
 
-            echo "spm_train on ${BPE_TRAIN}..."
-            ccvg=1.0
-            if [[ ${SRC} == "zh" ]] || [[ ${TGT} == "zh" ]]; then
-                ccvg=0.9995
-            fi
-            python $spm_train --input=$BPE_TRAIN \
-                --model_prefix=$SPM_PREFIX \
-                --vocab_size=$vocab \
-                --character_coverage=$ccvg \
-                --model_type=$vtype \
-                --normalization_rule_name=nmt_nfkc_cf
-
-            cut -f1 $SPM_PREFIX.vocab | tail -n +4 | sed "s/$/ 100/g" > $DICT
-            cp $SPM_MODEL $bin/$(basename $SPM_MODEL)
-            cp $DICT $bin/$(basename $DICT)
-            #######################################################
+        echo "spm_train on $BPE_TRAIN..."
+        ccvg=1.0
+        if [[ ${l} == "zh" ]]; then
+            ccvg=0.9995
         fi
-
-    else
-        if [[ ! -f $SPM_MODEL ]]; then
-            echo "SPM model: $SPM_MODEL not found!"
-            exit
-        fi
+        python $spm_train --input=$BPE_TRAIN \
+            --model_prefix=${SPM_PREFIX}_${l} \
+            --vocab_size=$vocab \
+            --character_coverage=$ccvg \
+            --model_type=$vtype \
+            --normalization_rule_name=nmt_nfkc_cf
+        
+        cut -f1 ${SPM_PREFIX}_${l}.vocab | tail -n +4 | sed "s/$/ 100/g" > $DICT
+        cp $SPM_MODEL $bin/$(basename $SPM_MODEL)
+        cp $DICT $bin/$(basename $DICT)
     fi
 
     echo "Using SPM model $SPM_MODEL"
-    for l in ${SRC} ${TGT}; do
-        for f in train.$l valid.$l test.$l; do
-            if [ -f $ready/$f ]; then
-                echo "found $ready/$f, skipping spm_encode"
-            else
-                echo "spm_encode to ${f}..."
-                python $spm_encode --model=$SPM_MODEL \
-                    --output_format=piece \
-                    < $prep/$f > $ready/$f
-            fi
-        done
+    for split in train valid test; do
+        if [ -f $ready/$split.$l ]; then
+            echo "found $ready/$split.$l, skipping spm_encode"
+        else
+            echo "spm_encode to $split.$l..."
+            python $spm_encode --model=$SPM_MODEL \
+                --output_format=piece \
+                < $prep/$split.$l > $ready/$split.$l
+        fi
     done
-fi
+done
+
+# filter ratio and maxlen < 1024
+perl $CLEAN -ratio 9 $ready/train ${SRC} ${TGT} $ready/train.clean 1 1024
 
 python -m fairseq_cli.preprocess \
     --source-lang ${SRC} \
     --target-lang ${TGT} \
-    --trainpref ${ready}/train \
+    --trainpref ${ready}/train.clean \
     --validpref ${ready}/valid \
     --testpref ${ready}/test \
     --destdir ${bin} \
     --workers ${workers} \
-    --joined-dictionary \
-    --srcdict ${DICT}
+    --srcdict ${SPM_PREFIX}_${SRC}.txt \
+    --tgtdict ${SPM_PREFIX}_${TGT}.txt

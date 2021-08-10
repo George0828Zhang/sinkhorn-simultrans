@@ -6,9 +6,9 @@ export PYTHONPATH="$FAIRSEQ:$PYTHONPATH"
 SCRIPTS=~/utility/mosesdecoder/scripts
 # source ~/envs/apex/bin/activate
 
-SRC=zh
-TGT=en
-lang=zh-en
+SRC=en
+TGT=zh
+lang=en-zh
 vocab=32000
 vtype=unigram
 workers=4
@@ -190,7 +190,7 @@ for l in ${SRC} ${TGT}; do
     done
 done
 
-# filter ratio and maxlen < 50
+# filter ratio and maxlen < 1024
 perl $CLEAN -ratio 9 $ready/train ${SRC} ${TGT} $ready/train.clean 1 1024
 
 python -m fairseq_cli.preprocess \

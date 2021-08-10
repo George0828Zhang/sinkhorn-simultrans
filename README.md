@@ -1,8 +1,7 @@
-# Simultaneous Translation with Gumbel Sinkhorn Attention 
-Proposed: Learning to translate monotonically by optimal transport.
+# Learning to Reorder for Lower Latency Simultaneous Translation
+Implementation of paper 
 
 ## Setup
-
 1. Install fairseq
 ```bash
 git clone https://github.com/pytorch/fairseq.git
@@ -24,33 +23,32 @@ First download moses tokenizer:
 git clone https://github.com/moses-smt/mosesdecoder.git
 ```
 
-### iwslt14 de<->en
-
-1. Setup paths in `DATA/get_data_iwslt14_deen.sh`
+### CWMT En<->Zh
+For CWMT, you need [kaggle account and api](https://www.kaggle.com/docs/api) before dowloading.
+1. Setup paths in `DATA/get_data_cwmt.sh`
 ```bash
-DATA_ROOT=/path/to/iwslt14          # set path to store raw and preprocessed data
-FAIRSEQ=/path/to/fairseq                  # set path to fairseq root
+DATA_ROOT=/path/to/cwmt                     # set path to store raw and preprocessed data
+FAIRSEQ=/path/to/fairseq                    # set path to fairseq root
 export PYTHONPATH="$FAIRSEQ:$PYTHONPATH"
-SCRIPTS=~/utility/mosesdecoder/scripts    # set path to moses tokenizer root
-source ~/envs/apex/bin/activate           # activate your virtual environment if any
+SCRIPTS=~/utility/mosesdecoder/scripts      # set path to moses tokenizer root
+source ~/envs/apex/bin/activate             # activate your virtual environment if any
 ```
 2. Preprocess data with
 ```bash
 cd DATA
-bash get_data_iwslt14_deen.sh
+bash get_data_cwmt.sh
 ```
 
-### wmt15 de<->en
+### WMT15 De<->En
 - Similarly, preprocess with `get_data_wmt15.sh`.
 
+The output binarized files should appear under `${DATA_ROOT}/${SRC}-${TGT}/data-bin`. 
 
-The output binarized files should appear under `${DATA_ROOT}/de-en/data-bin`. 
-
-Configure environment and data path in `exp/data_path.sh` before training:
+Configure environment and data path in `exp*/data_path.sh` before training, for instance:
 ```bash
-export SRC=de
-export TGT=en
-export DATA=/path/to/iwslt14/de-en/data-bin
+export SRC=en
+export TGT=zh
+export DATA=/path/to/iwslt14/en-zh/data-bin
 
 FAIRSEQ=/path/to/fairseq
 USERDIR=`realpath ../simultaneous_translation`
@@ -75,36 +73,37 @@ bash eval_mt.sh
 To distill the training set, run 
 ```bash
 bash 0a-decode-distill.sh # generate prediction at ./mt.results/generate-test.txt
-bash 0b-create-distill-tsv.sh # generate distillation data as 'train_distill' split from prediction
+bash 0b-create-distill.sh # generate distillation data as 'train_distill_${TGT}' split from prediction
 ```
 To use the distillation data as training set, use/add the command line argument
 ```bash
---train-subset train_distill
+--train-subset train_distill_${TGT}
 ```
 
-### Pretrained models & distillation dataset
-|iwslt14 de-en|wmt15 de-en|
+### Distillation dataset
+We provide our distillation dataset for easier reproduceability.
+|CWMT En->Zh|WMT15 De->En|
 |-|-|
-|[model (31.62)](https://onedrive.live.com/download?cid=3E549F3B24B238B4&resid=3E549F3B24B238B4%216345&authkey=ANTgZvmncA2OFt0)|[model (31.81)](https://onedrive.live.com/download?cid=3E549F3B24B238B4&resid=3E549F3B24B238B4%216410&authkey=AAoV5mPI3w5EoA4)|
-|[distilled (de->en)](https://onedrive.live.com/download?cid=3E549F3B24B238B4&resid=3E549F3B24B238B4%216343&authkey=ADWEb0KVv4MwMqo)|[distilled (de->en)](https://onedrive.live.com/download?cid=3E549F3B24B238B4&resid=3E549F3B24B238B4%216409&authkey=AP289c7TK3Mmkek)|
+|||
 
 ## Vanilla wait-k
-We can now train vanilla wait-k ST model as a baseline. To do this, run
-> **_NOTE:_**  to train with the distillation set, set `--train-subset` to `distill_st` in the script.
+We can now train vanilla wait-k model as a baseline. To do this, run
+> **_NOTE:_**  to train with the distillation set, set `--train-subset` to `train_distill_${TGT}` in the script.
 ```bash
-bash 2-vanilla_wait_k.sh
+bash 1-vanilla_wait_k.sh
 ```
-### Pretrained models
-The gcmvn and spm share the same files with corresponding poretrained asr.
-|DATA|arch|en-es|en-de|
-|-|-|-|-|
-||wait-1||||
-||wait-3||||
-||wait-5||||
-||wait-7||||
-||wait-9||||
 
+## Sinkhorn Encoder
+```bash
+bash 2-sinkhorn.sh
+```
 
-## Offline Evaluation (BLEU only)
+## Sinkhorn wait-k
+```bash
+bash 4-sinkhorn-waitk.sh
+```
+
 ## Online Evaluation (SimulEval)
 Install [SimulEval](docs/extra_installation.md).
+For wait-k models, use `simuleval_waitk.sh`.
+For encoder models, use `simuleval_sinkhorn.sh`.
