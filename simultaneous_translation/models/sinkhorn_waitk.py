@@ -210,6 +210,7 @@ def sinkhorn_waitk(args):
     args.max_source_positions = getattr(args, "max_source_positions", 1024)
     args.max_target_positions = getattr(args, "max_target_positions", 1024)
 
+    args.decoder_layers = getattr(args, "decoder_layers", 1)
     args.non_causal_layers = getattr(args, "non_causal_layers", 3)
     args.dropout = getattr(args, "dropout", 0.1)
 
@@ -232,7 +233,7 @@ def sinkhorn_waitk_small(args):
 
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 256)
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 2048)
-    args.decoder_layers = getattr(args, "decoder_layers", 5)
+    args.decoder_layers = getattr(args, "decoder_layers", 1)
     args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 4)
     args.decoder_normalize_before = getattr(
         args, "decoder_normalize_before", True)

@@ -1,39 +1,43 @@
 #!/usr/bin/env bash
-TASK=sinkhorn_delay1_eos
-SPLIT=test
+DELAY=$1
+TASK=ctc_delay${DELAY}
 AGENT=./agents/simul_t2t_sinkhorn.py
-EXP=../expiwslt
+EXP=../expcwmt
 . ${EXP}/data_path.sh
 CHECKDIR=${EXP}/checkpoints/${TASK}
 CHECKPOINT_FILENAME=checkpoint_best.pt
-# SPM_MODEL=${DATA}/spm_unigram32000.model
-SPM_MODEL=${DATA}/spm_unigram8000.model
-LC=~/utility/mosesdecoder/scripts/tokenizer/lowercase.perl
-SRC_FILE=$(realpath ${DATA}/../prep/${SPLIT}.${SRC})
-TGT_FILE=$(realpath ${DATA}/../prep/${SPLIT}.${TGT})
-# SRC_FILE=debug/detok.de
-# TGT_FILE=debug/detok.en
+SPM_PREFIX=${DATA}/spm_unigram32000
+SRC_FILE=/livingrooms/george/cwmt/zh-en/prep/test.en-zh.${SRC}
+TGT_FILE=/livingrooms/george/cwmt/zh-en/prep/test.en-zh.${TGT}.1
+# SRC_FILE=debug/tiny.en
+# TGT_FILE=debug/tiny.zh
+BLEU_TOK=13a
+UNIT=word
 OUTPUT=${TASK}.$(basename $(dirname $(dirname ${DATA})))
 
-if [ -f ${TGT_FILE}.lc ]; then
-  echo "${TGT_FILE}.lc found, skipping lowercase."
-else
-  echo "lowercase to ${TGT_FILE}.lc ..."
-  cat ${TGT_FILE} | perl $LC > ${TGT_FILE}.lc
-  echo "done."
+if [[ ${TGT} == "zh" ]]; then
+  BLEU_TOK=zh
+  UNIT=char
+  NO_SPACE="--no-space"
 fi
 
 simuleval \
   --agent ${AGENT} \
   --user-dir ${USERDIR} \
   --source ${SRC_FILE} \
-  --target ${TGT_FILE}.lc \
+  --target ${TGT_FILE} \
   --data-bin ${DATA} \
   --model-path ${CHECKDIR}/${CHECKPOINT_FILENAME} \
-  --src-splitter-path ${SPM_MODEL} \
-  --tgt-splitter-path ${SPM_MODEL} \
+  --src-splitter-path ${SPM_PREFIX}_${SRC}.model \
+  --tgt-splitter-path ${SPM_PREFIX}_${TGT}.model \
   --output ${OUTPUT} \
-  --sacrebleu-tokenizer 13a \
   --incremental-encoder \
+  --sacrebleu-tokenizer ${BLEU_TOK} \
+  --eval-latency-unit ${UNIT} \
+  --segment-type ${UNIT} \
+  ${NO_SPACE} \
   --scores \
-  --test-waitk 1
+  --test-waitk ${DELAY} \
+  --non-strict
+
+mv ${OUTPUT}/scores ${OUTPUT}/scores.$2
