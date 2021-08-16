@@ -55,6 +55,9 @@ class SimulTransTextAgentWaitk(TextAgent):
         parser.add_argument("--test-waitk", type=int, default=1)
         parser.add_argument("--incremental-encoder", default=False, action="store_true",
                             help="Update the model incrementally without recomputation of history.")
+        parser.add_argument("--full-sentence", default=False, action="store_true",
+                            help="use full sentence strategy, "
+                            "by updating the encoder only once after read is finished.")
         parser.add_argument("--segment-type", type=str, default="word", choices=["word", "char"],
                             help="Agent can send a word or a char to server at a time.")
 
@@ -66,7 +69,12 @@ class SimulTransTextAgentWaitk(TextAgent):
         self.test_waitk = args.test_waitk
         self.force_finish = args.force_finish
         self.incremental_encoder = args.incremental_encoder
+        self.full_sentence = args.full_sentence
         self.segment_type = args.segment_type
+
+        if self.full_sentence:
+            logger.info("Full sentence override waitk to 1024.")
+            self.test_waitk = 1024
 
         # Whether use gpu
         self.gpu = getattr(args, "gpu", False)
@@ -190,14 +198,13 @@ class SimulTransTextAgentWaitk(TextAgent):
             torch.LongTensor([src_indices.size(1)])
         )
 
-        encoder_out = self.model.encoder(
-            src_indices,
-            src_lengths,
-            incremental_state=states.enc_incremental_states,
-            incremental_step=src_len - enc_len,
-        )
-
         if self.incremental_encoder:
+            encoder_out = self.model.encoder(
+                src_indices,
+                src_lengths,
+                incremental_state=states.enc_incremental_states,
+                incremental_step=src_len - enc_len,
+            )
             if getattr(states, "encoder_states", None) is None:
                 states.encoder_states = {
                     # List[T x B x C]
@@ -223,7 +230,8 @@ class SimulTransTextAgentWaitk(TextAgent):
 
     def update_states_read(self, states):
         # Happens after a read action.
-        self.update_model_encoder(states)
+        if not self.full_sentence or states.finish_read():
+            self.update_model_encoder(states)
 
     def units_to_segment(self, unit_queue, states):
         """Merge sub word to full word.
@@ -313,7 +321,7 @@ class SimulTransTextAgentWaitk(TextAgent):
         return token.replace(BOW_PREFIX, "")
 
     def policy(self, states):
-        if not getattr(states, "encoder_states", None):
+        if not getattr(states, "encoder_states", None) and not states.finish_read():
             return READ_ACTION
 
         waitk = self.test_waitk
