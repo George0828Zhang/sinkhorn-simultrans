@@ -3,10 +3,6 @@
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
-# Adapted from https://github.com/elbayadm/attn2d/blob/master/examples/waitk
-# Implementation of the papers:
-#   *Efficient Wait-k Models for Simultaneous Machine Translation
-#       http://www.interspeech2020.org/uploadfile/pdf/Tue-1-1-2.pdf
 
 import logging
 from fairseq import checkpoint_utils
@@ -26,9 +22,7 @@ from .waitk_transformer import (
     CausalTransformerEncoder,
     WaitkTransformerModel,
 )
-from .sinkhorn_encoder import (
-    SinkhornCascadedEncoder,
-)
+from .sinkhorn_encoder import ASNAugmentedEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +114,7 @@ class SinkhornWaitkTransformerModel(WaitkTransformerModel):
                 f"loaded pretrained encoder from: "
                 f"{args.load_pretrained_encoder_from}"
             )
-        cascade = SinkhornCascadedEncoderSlice(
+        cascade = ASNAugmentedEncoderSlice(
             args, encoder, tgt_dict, decoder_embed_tokens)
         return cascade
 
@@ -196,7 +190,7 @@ class SinkhornWaitkTransformerModel(WaitkTransformerModel):
         return logits, extra
 
 
-class SinkhornCascadedEncoderSlice(SinkhornCascadedEncoder):
+class ASNAugmentedEncoderSlice(ASNAugmentedEncoder):
     def slice_encoder_out(self, encoder_out, context_size):
         return self.causal_encoder.slice_encoder_out(encoder_out, context_size)
 
