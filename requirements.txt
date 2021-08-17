@@ -1,6 +1,6 @@
 torch>=1.8.1
 editdistance
-sacrebleu
+sacrebleu==1.5.1
 sacremoses
 sentencepiece
 tqdm
