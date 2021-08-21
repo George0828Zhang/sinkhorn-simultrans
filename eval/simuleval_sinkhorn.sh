@@ -1,19 +1,26 @@
 #!/usr/bin/env bash
-DELAY=$1
-TASK=ctc_delay${DELAY}
+MODEL=$1
+DELAY=$2
+TRIAL=$3
+PORT=12345
+WORKERS=2
 AGENT=./agents/simul_t2t_sinkhorn.py
 EXP=../expcwmt
-. ${EXP}/data_path.sh
+source ${EXP}/data_path.sh
+
+TASK=${MODEL}_delay${DELAY}
 CHECKDIR=${EXP}/checkpoints/${TASK}
 CHECKPOINT_FILENAME=checkpoint_best.pt
 SPM_PREFIX=${DATA}/spm_unigram32000
-SRC_FILE=/livingrooms/george/cwmt/zh-en/prep/test.en-zh.${SRC}
-TGT_FILE=/livingrooms/george/cwmt/zh-en/prep/test.en-zh.${TGT}.1
-# SRC_FILE=debug/tiny.en
-# TGT_FILE=debug/tiny.zh
+SRC_FILE=/media/george/Data/cwmt/zh-en/prep/test.${SRC}-${TGT}.${SRC}
+TGT_FILE=/media/george/Data/cwmt/zh-en/prep/test.${SRC}-${TGT}.${TGT}.1
+# SRC_FILE=/media/george/Data/wmt15/de-en/prep/test.${SRC}
+# TGT_FILE=/media/george/Data/wmt15/de-en/prep/test.${TGT}
 BLEU_TOK=13a
 UNIT=word
-OUTPUT=${TASK}.$(basename $(dirname $(dirname ${DATA})))
+BASENAME=$(basename $(dirname $(dirname ${DATA})))
+OUTPUT=${BASENAME}_${TGT}-results/${TASK}.${BASENAME}
+mkdir -p ${OUTPUT}
 
 if [[ ${TGT} == "zh" ]]; then
   BLEU_TOK=zh
@@ -38,6 +45,7 @@ simuleval \
   ${NO_SPACE} \
   --scores \
   --test-waitk ${DELAY} \
-  --non-strict
+  --port ${PORT} \
+  --workers ${WORKERS}
 
-mv ${OUTPUT}/scores ${OUTPUT}/scores.$2
+mv ${OUTPUT}/scores ${OUTPUT}/scores.${TRIAL}

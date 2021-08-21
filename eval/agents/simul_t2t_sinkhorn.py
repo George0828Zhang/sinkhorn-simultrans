@@ -62,6 +62,7 @@ class SimulTransTextAgentSinkhorn(TextAgent):
                             help="Agent can send a word or a char to server at a time.")
         parser.add_argument("--non-strict", default=False, action="store_true",
                             help="load parameters from checkpoint with strict=False.")
+        parser.add_argument("--workers", type=int, default=1)
         # fmt: on
         return parser
 
@@ -72,7 +73,7 @@ class SimulTransTextAgentSinkhorn(TextAgent):
         self.incremental_encoder = args.incremental_encoder
         self.print_blank = args.print_blank
         self.segment_type = args.segment_type
-
+        self.workers = args.workers
         # Whether use gpu
         self.gpu = getattr(args, "gpu", False)
 
@@ -88,6 +89,7 @@ class SimulTransTextAgentSinkhorn(TextAgent):
         self.max_len = lambda x: self.model.encoder.upsample_ratio * x
 
         torch.set_grad_enabled(False)
+        torch.set_num_threads(self.workers)
 
     def load_model_vocab(self, args):
         filename = args.model_path

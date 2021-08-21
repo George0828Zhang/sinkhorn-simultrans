@@ -60,7 +60,7 @@ class SimulTransTextAgentWaitk(TextAgent):
                             "by updating the encoder only once after read is finished.")
         parser.add_argument("--segment-type", type=str, default="word", choices=["word", "char"],
                             help="Agent can send a word or a char to server at a time.")
-
+        parser.add_argument("--workers", type=int, default=1)
         # fmt: on
         return parser
 
@@ -71,6 +71,7 @@ class SimulTransTextAgentWaitk(TextAgent):
         self.incremental_encoder = args.incremental_encoder
         self.full_sentence = args.full_sentence
         self.segment_type = args.segment_type
+        self.workers = args.workers
 
         if self.full_sentence:
             logger.info("Full sentence override waitk to 1024.")
@@ -91,6 +92,7 @@ class SimulTransTextAgentWaitk(TextAgent):
         self.max_len = lambda x: args.max_len_a * x + args.max_len_b
 
         torch.set_grad_enabled(False)
+        torch.set_num_threads(self.workers)
 
     def load_model_vocab(self, args):
         filename = args.model_path

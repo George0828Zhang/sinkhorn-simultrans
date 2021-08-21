@@ -1,23 +1,40 @@
 #!/usr/bin/env bash
-WAITK=1
-TASK=wait_${WAITK}_enzh_distill
+MODEL=$1
+WAITK=$2
+TRIAL=$3
+PORT=12345
+WORKERS=2
 AGENT=./agents/simul_t2t_waitk.py
 EXP=../expcwmt
-. ${EXP}/data_path.sh
+source ${EXP}/data_path.sh
+
+if [[ ${MODEL} == "waitk" ]]; then
+  MODEL=wait_${WAITK}_${SRC}${TGT}_distill
+elif [[ ${MODEL} == "sinkhorn" ]]; then
+  MODEL=sinkhorn_wait${WAITK}_distill
+else
+  echo "no such file ${MODEL}_delay${DELAY}"
+  exit
+fi
+
+TASK=${MODEL}
 CHECKDIR=${EXP}/checkpoints/${TASK}
 CHECKPOINT_FILENAME=checkpoint_best.pt
 SPM_PREFIX=${DATA}/spm_unigram32000
-SRC_FILE=/media/george/Data/cwmt/zh-en/prep/test.en-zh.${SRC}
-TGT_FILE=/media/george/Data/cwmt/zh-en/prep/test.en-zh.${TGT}.1
-# SRC_FILE=debug/tiny.en
-# TGT_FILE=debug/tiny.zh
+SRC_FILE=/media/george/Data/cwmt/zh-en/prep/test.${SRC}-${TGT}.${SRC}
+TGT_FILE=/media/george/Data/cwmt/zh-en/prep/test.${SRC}-${TGT}.${TGT}.1
+# SRC_FILE=/media/george/Data/wmt15/de-en/prep/test.${SRC}
+# TGT_FILE=/media/george/Data/wmt15/de-en/prep/test.${TGT}
 BLEU_TOK=13a
 UNIT=word
-OUTPUT=${TASK}.$(basename $(dirname $(dirname ${DATA})))
+BASENAME=$(basename $(dirname $(dirname ${DATA})))
+OUTPUT=${BASENAME}_${TGT}-results/${TASK}.${BASENAME}
+mkdir -p ${OUTPUT}
 
 if [[ ${TGT} == "zh" ]]; then
   BLEU_TOK=zh
   UNIT=char
+  NO_SPACE="--no-space"
 fi
 
 simuleval \
@@ -34,8 +51,10 @@ simuleval \
   --sacrebleu-tokenizer ${BLEU_TOK} \
   --eval-latency-unit ${UNIT} \
   --segment-type ${UNIT} \
-  --no-space \
+  ${NO_SPACE} \
   --scores \
-  --test-waitk ${WAITK}
+  --test-waitk ${WAITK} \
+  --port ${PORT} \
+  --workers ${WORKERS}
 
-# mv ${OUTPUT}/scores ${OUTPUT}/scores.$1
+mv ${OUTPUT}/scores ${OUTPUT}/scores.$TRIAL

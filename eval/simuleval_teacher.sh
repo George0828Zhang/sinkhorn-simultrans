@@ -1,21 +1,24 @@
 #!/usr/bin/env bash
 TRIAL=$1
-PORT=$2
-
-TASK=teacher_cwmt_enzh
+PORT=23451
+WORKERS=2
 AGENT=./agents/simul_t2t_waitk.py
 EXP=../expcwmt
 . ${EXP}/data_path.sh
+
+TASK=teacher_wmt15_${SRC}${TGT}
 CHECKDIR=${EXP}/checkpoints/${TASK}
 CHECKPOINT_FILENAME=checkpoint_best.pt
 SPM_PREFIX=${DATA}/spm_unigram32000
-SRC_FILE=/livingrooms/george/cwmt/zh-en/prep/test.en-zh.${SRC}
-TGT_FILE=/livingrooms/george/cwmt/zh-en/prep/test.en-zh.${TGT}.1
-# SRC_FILE=debug/tiny.en
-# TGT_FILE=debug/tiny.zh
+SRC_FILE=/media/george/Data/cwmt/zh-en/prep/test.${SRC}-${TGT}.${SRC}
+TGT_FILE=/media/george/Data/cwmt/zh-en/prep/test.${SRC}-${TGT}.${TGT}.1
+# SRC_FILE=/media/george/Data/wmt15/de-en/prep/test.${SRC}
+# TGT_FILE=/media/george/Data/wmt15/de-en/prep/test.${TGT}
 BLEU_TOK=13a
 UNIT=word
-OUTPUT=${TASK}.$(basename $(dirname $(dirname ${DATA})))
+BASENAME=$(basename $(dirname $(dirname ${DATA})))
+OUTPUT=${BASENAME}_${TGT}-results/${TASK}.${BASENAME}
+mkdir -p ${OUTPUT}
 
 if [[ ${TGT} == "zh" ]]; then
   BLEU_TOK=zh
@@ -39,6 +42,7 @@ simuleval \
   ${NO_SPACE} \
   --scores \
   --full-sentence \
-  --port ${PORT}
+  --port ${PORT} \
+  --workers ${WORKERS}
 
-mv ${OUTPUT}/scores ${OUTPUT}/scores.$TRIAL
+mv ${OUTPUT}/scores ${OUTPUT}/scores.${TRIAL}
