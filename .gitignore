@@ -1,4 +1,8 @@
 *__pycache__*
 */checkpoints/*
+*/alignments/*
 .vscode/
 wandb/
+*.zip
+debug/
+*-results/
