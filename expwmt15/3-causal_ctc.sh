@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
+. ./data_path.sh
 DELAY=$1
 TASK=ctc_delay${DELAY}
-. ./data_path.sh
 
 python -m fairseq_cli.train ${DATA} --user-dir ${USERDIR} \
     -s ${SRC} -t ${TGT} \

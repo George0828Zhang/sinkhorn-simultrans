@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 # Adapted from https://github.com/pytorch/fairseq/blob/simulastsharedtask/examples/translation/prepare-iwslt14.sh
-DATA_ROOT=/media/george/Data/wmt15
+DATA_ROOT=/livingrooms/george/cwmt
 FAIRSEQ=~/utility/fairseq
 export PYTHONPATH="$FAIRSEQ:$PYTHONPATH"
 SCRIPTS=~/utility/mosesdecoder/scripts
-# source ~/envs/apex/bin/activate
+source ~/envs/apex/bin/activate
 DECODED=./mt.results/generate-train.txt
 
-
-SRC=de
-TGT=en
-lang=de-en
+SRC=en
+TGT=zh
+lang=zh-en
 vocab=32000
 vtype=unigram
 workers=4
@@ -24,9 +23,8 @@ LC=$SCRIPTS/tokenizer/lowercase.perl
 spm_train=$FAIRSEQ/scripts/spm_train.py
 spm_encode=$FAIRSEQ/scripts/spm_encode.py
 
-DATA=${DATA_ROOT}/${SRC}-${TGT}
-SPM_MODEL=${DATA_ROOT}/${SRC}-${TGT}/data-bin/spm_${vtype}${vocab}.model
-DICT=${DATA_ROOT}/${SRC}-${TGT}/data-bin/spm_${vtype}${vocab}.txt
+DATA=${DATA_ROOT}/${lang}
+SPM_PREFIX=${DATA_ROOT}/${lang}/data-bin/spm_${vtype}${vocab}
 
 
 prep=${DATA}/prep
@@ -41,6 +39,8 @@ grep -E "H-[0-9]+" ${DECODED} | cut -f3 > $prep/distill.${TGT}
 
 echo "Using SPM model $SPM_MODEL"
 for l in ${SRC} ${TGT}; do
+    SPM_MODEL=${SPM_PREFIX}_${l}.model
+
     f=distill.$l
     if [ -f $ready/$f ]; then
         echo "found $ready/$f, skipping spm_encode"
@@ -58,11 +58,11 @@ python -m fairseq_cli.preprocess \
     --trainpref ${ready}/distill \
     --destdir ${newbin} \
     --workers ${workers} \
-    --joined-dictionary \
-    --srcdict ${DICT}
+    --srcdict ${SPM_PREFIX}_${SRC}.txt \
+    --tgtdict ${SPM_PREFIX}_${TGT}.txt
 
 for l in ${SRC} ${TGT}; do
     for ext in bin idx; do
-        cp ${newbin}/train.$lang.$l.$ext ${bin}/train_distill.$lang.$l.$ext
+        cp ${newbin}/train.$lang.$l.$ext ${bin}/train_distill_${TGT}.$lang.$l.$ext
     done
 done

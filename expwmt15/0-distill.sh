@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-TASK=teacher_cwmt_deen
-. ./data_path.sh
+source ./data_path.sh
+TASK=teacher_wmt15_${SRC}${TGT}
 
 python -m fairseq_cli.train ${DATA} --user-dir ${USERDIR} \
     -s ${SRC} -t ${TGT} \

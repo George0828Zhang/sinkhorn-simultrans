@@ -1,0 +1,86 @@
+program: /home/george/utility/fairseq/fairseq_cli/train.py
+method: bayes
+metric:
+  name: valid/best_bleu
+  goal: maximize
+parameters:
+  sinkhorn-tau:
+    values: [0.1, 0.15, 0.2, 0.25, 0.3]
+  sinkhorn-noise-factor:
+    values: [0.1, 0.15, 0.2, 0.25, 0.3]
+  mask-ratio:
+    values: [0., 0.1, 0.2, 0.3, 0.4, 0.5]
+  non-causal-layers:
+    values: [1, 2, 3]
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - "/livingrooms/george/cwmt/zh-en/data-bin"
+  - "--user-dir"
+  - "/home/george/sinkhorn-simultrans/simultaneous_translation"
+  - "-s"
+  - "en"
+  - "-t"
+  - "zh"
+  - "--train-subset"
+  - "train_distill_zh"
+  - "--max-tokens"
+  - "8000"
+  - "--update-freq"
+  - "4"
+  - "--task"
+  - "translation_infer"
+  - "--inference-config-yaml"
+  - "infer_mt.yaml"
+  - "--arch"
+  - "sinkhorn_encoder"
+  - "--sinkhorn-iters"
+  - "16"
+  - "--sinkhorn-bucket-size"
+  - "1"
+  - "--sinkhorn-energy"
+  - "dot"
+  - "--delay"
+  - "1"
+  - "--criterion"
+  - "label_smoothed_ctc"
+  - "--label-smoothing"
+  - "0.1"
+  - "--eos-loss"
+  - "--report-sinkhorn-dist"
+  - "--report-accuracy"
+  - "--decoder-use-ctc"
+  - "--clip-norm"
+  - "10.0"
+  - "--weight-decay"
+  - "0.0001"
+  - "--optimizer"
+  - "adam"
+  - "--lr"
+  - "5e-4"
+  - "--lr-scheduler"
+  - "inverse_sqrt"
+  - "--warmup-updates"
+  - "4000"
+  - "--max-update"
+  - "50000"
+  - "--wandb-project"
+  - "sinkhorn-cwmt"
+  - "--no-save"
+  - "--best-checkpoint-metric"
+  - "bleu"
+  - "--maximize-best-checkpoint-metric"
+  - "--no-epoch-checkpoints"
+  - "--validate-interval-updates"
+  - "500"
+  - "--patience"
+  - "50"
+  - "--log-format"
+  - "simple"
+  - "--log-interval"
+  - "50"
+  - "--num-workers"
+  - "4"
+  - "--fp16"
+  - ${args}

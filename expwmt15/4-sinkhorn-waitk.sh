@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
+. ./data_path.sh
 WAITK=$1
 TASK=sinkhorn_wait${WAITK}_distill
-. ./data_path.sh
 
 python -m fairseq_cli.train ${DATA} --user-dir ${USERDIR} \
     -s ${SRC} -t ${TGT} \
@@ -10,8 +10,8 @@ python -m fairseq_cli.train ${DATA} --user-dir ${USERDIR} \
     --update-freq 4 \
     --task translation_infer \
     --inference-config-yaml infer_mt.yaml \
-    --arch sinkhorn_waitk --waitk ${WAITK} --mask-ratio 0.5 \
-    --sinkhorn-iters 16 --sinkhorn-tau 0.25 --sinkhorn-noise-factor 0.3 --sinkhorn-bucket-size 1 --sinkhorn-energy dot \
+    --arch sinkhorn_waitk --waitk ${WAITK} --mask-ratio 0.5 --non-causal-layers 1 \
+    --sinkhorn-iters 16 --sinkhorn-tau 0.1 --sinkhorn-noise-factor 0.3 --sinkhorn-bucket-size 1 --sinkhorn-energy dot \
     --criterion label_smoothed_ctc --label-smoothing 0.1 --report-sinkhorn-dist \
     --clip-norm 10.0 \
     --weight-decay 0.0001 \

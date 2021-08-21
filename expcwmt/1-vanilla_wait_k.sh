@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-WAITK=1
-TASK=wait_${WAITK}_deen_distill
-. ./data_path.sh
+source ./data_path.sh
+WAITK=$1
+TASK=wait_${WAITK}_${SRC}${TGT}_distill
 
 python -m fairseq_cli.train ${DATA} --user-dir ${USERDIR} \
     -s ${SRC} -t ${TGT} \
-    --train-subset train_distill \
+    --train-subset train_distill_${TGT} \
     --max-tokens 8000 \
-    --update-freq 2 \
+    --update-freq 4 \
     --task translation_infer \
     --inference-config-yaml infer_mt.yaml \
     --arch waitk_transformer \
@@ -21,12 +21,12 @@ python -m fairseq_cli.train ${DATA} --user-dir ${USERDIR} \
     --save-dir checkpoints/${TASK} \
     --no-epoch-checkpoints \
     --save-interval-updates 500 \
-    --keep-interval-updates 5 \
-    --keep-best-checkpoints 5 \
+    --keep-interval-updates 1 \
+    --keep-best-checkpoints 1 \
     --best-checkpoint-metric bleu --maximize-best-checkpoint-metric \
-    --wandb-project sinkhorn-wmt15 \
+    --wandb-project sinkhorn-cwmt \
     --patience 50 \
     --log-format simple --log-interval 50 \
-    --num-workers 8 \
+    --num-workers 4 \
     --fp16 \
     --seed 2

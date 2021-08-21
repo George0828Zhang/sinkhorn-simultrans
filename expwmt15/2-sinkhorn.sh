@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-DELAY=$1
-TASK=sinkhorn_delay${DELAY}_temp
 . ./data_path.sh
+DELAY=$1
+TASK=sinkhorn_delay${DELAY}
 
 python -m fairseq_cli.train ${DATA} --user-dir ${USERDIR} \
     -s ${SRC} -t ${TGT} \
@@ -28,5 +28,5 @@ python -m fairseq_cli.train ${DATA} --user-dir ${USERDIR} \
     --patience 50 \
     --log-format simple --log-interval 50 \
     --num-workers 4 \
-    --seed 1 \
+    --seed 66 \
     --fp16
