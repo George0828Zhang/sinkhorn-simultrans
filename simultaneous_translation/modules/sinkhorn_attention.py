@@ -35,7 +35,7 @@ def gumbel_sinkhorn(
         noise = noise_factor * sample_gumbel(log_alpha)
         log_alpha = log_alpha + noise.type_as(log_alpha)
     log_alpha = log_alpha / tau
-    sampled_perm_mat = log_sinkhorn_norm(log_alpha, n_iter)
+    sampled_perm_mat = log_sinkhorn_norm(log_alpha, n_iter) if n_iter > 0 else log_alpha.softmax(-1)
     return sampled_perm_mat
 
 

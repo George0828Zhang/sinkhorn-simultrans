@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
-TASK=teacher_cwmt_deen
-SPLIT=train
 . ./data_path.sh
+TASK=wait_9_${SRC}${TGT}_distill
+SPLIT=train
 CHECKDIR=./checkpoints/${TASK}
-AVG=true
-RESULT=./mt.results
+AVG=false
+RESULT=./monotonic.results
 
-EXTRAARGS="--scoring sacrebleu --sacrebleu-tokenizer zh --sacrebleu-lowercase"
-GENARGS="--beam 5 --lenpen 1.5 --max-len-a 1.2 --max-len-b 10 --remove-bpe sentencepiece"
+EXTRAARGS="--scoring sacrebleu --sacrebleu-tokenizer 13a --sacrebleu-lowercase"
+GENARGS="--beam 5 --max-len-a 1.2 --max-len-b 10 --remove-bpe sentencepiece"
 
-# export CUDA_VISIBLE_DEVICES=0
 
 if [[ $AVG == "true" ]]; then
   CHECKPOINT_FILENAME=avg_best_5_checkpoint.pt
@@ -25,8 +24,9 @@ python -m fairseq_cli.generate ${DATA} \
   --user-dir ${USERDIR} \
   --gen-subset ${SPLIT} \
   --skip-invalid-size-inputs-valid-test \
-  --task translation \
+  --task translation_infer \
+  --inference-config-yaml infer_monotonic.yaml \
   --path ${CHECKDIR}/${CHECKPOINT_FILENAME} \
-  --max-tokens 16000 --fp16 \
+  --max-tokens 8000 --fp16 \
   --results-path ${RESULT} \
   ${GENARGS} ${EXTRAARGS}

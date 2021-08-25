@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
-# Adapted from https://github.com/pytorch/fairseq/blob/simulastsharedtask/examples/translation/prepare-iwslt14.sh
-DATA_ROOT=/livingrooms/george/cwmt
+DATA_ROOT=/livingrooms/george/wmt15
 FAIRSEQ=~/utility/fairseq
 export PYTHONPATH="$FAIRSEQ:$PYTHONPATH"
 SCRIPTS=~/utility/mosesdecoder/scripts
 source ~/envs/apex/bin/activate
 DECODED=./monotonic.results/generate-train.txt
 
-SRC=en
-TGT=zh
-lang=zh-en
+SRC=de
+TGT=en
+lang=de-en
 vocab=32000
 vtype=unigram
 workers=4

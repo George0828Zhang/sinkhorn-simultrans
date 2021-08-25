@@ -6,7 +6,7 @@ CHECKDIR=./checkpoints/${TASK}
 AVG=false
 RESULT=./monotonic.results
 
-EXTRAARGS="--scoring sacrebleu --sacrebleu-tokenizer ${TGT} --sacrebleu-lowercase"
+EXTRAARGS="--scoring sacrebleu --sacrebleu-tokenizer zh --sacrebleu-lowercase"
 GENARGS="--beam 5 --max-len-a 1.2 --max-len-b 10 --remove-bpe sentencepiece"
 
 
