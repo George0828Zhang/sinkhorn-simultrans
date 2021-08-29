@@ -12,8 +12,13 @@ REF=(
 # Normal
 for DELAY in 1 3 5 7 9; do
     BASELINE="${DIR}/wait_${DELAY}_${SRC}${TGT}_distill.cwmt/prediction"
+    # BASELINE="${DIR}/ctc_delay${DELAY}.cwmt/prediction"
     SYSTEMS=(
+        "${DIR}/wait_${DELAY}_${SRC}${TGT}_mon.cwmt/prediction"
+        "${DIR}/wait_${DELAY}_${SRC}${TGT}_reorder.cwmt/prediction"
         "${DIR}/ctc_delay${DELAY}.cwmt/prediction"
+        "${DIR}/ctc_delay${DELAY}_mon.cwmt/prediction"
+        "${DIR}/ctc_delay${DELAY}_reorder.cwmt/prediction"
         "${DIR}/sinkhorn_delay${DELAY}.cwmt/prediction"
     )
 
@@ -21,9 +26,10 @@ for DELAY in 1 3 5 7 9; do
     mkdir -p $(dirname ${OUTPUT})
     python -m sacrebleu ${REF[@]} -i ${BASELINE} ${SYSTEMS[@]} \
         --paired-jobs ${WORKERS} \
-        -m bleu \
+        -m bleu chrf \
         --width 2 \
         --tok zh -lc \
+        --chrf-lowercase \
         --paired-bs | tee ${OUTPUT}
 done
 
@@ -31,9 +37,10 @@ done
 TEACHER="${DIR}/teacher_cwmt_${SRC}${TGT}.cwmt/prediction"
 OUTPUT=${DIR}/quality-results.cwmt/full_sentence-systems
 mkdir -p $(dirname ${OUTPUT})
-python -m sacrebleu ${REF[@]} -i ${BASELINE} \
+python -m sacrebleu ${REF[@]} -i ${TEACHER} \
     --paired-jobs ${WORKERS} \
-    -m bleu \
+    -m bleu chrf \
     --width 2 \
     --tok zh -lc \
+    --chrf-lowercase \
     --confidence | tee ${OUTPUT}

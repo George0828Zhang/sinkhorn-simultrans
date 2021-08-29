@@ -23,10 +23,10 @@ logger = logging.getLogger(__name__)
 BOW_PREFIX = "\u2581"
 
 
-class SimulTransTextAgentSinkhorn(TextAgent):
+class SimulTransTextAgentCTC(TextAgent):
     """
     Simultaneous Translation
-    Text agent for sinkhorn encoder models
+    Text agent for ctc encoder models
     """
     @staticmethod
     def add_args(parser):
