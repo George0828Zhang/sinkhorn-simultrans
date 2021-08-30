@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 source ./data_path.sh
 DELAY=$1
-TASK=sinkhorn_delay${DELAY}
+TASK=sinkhorn_delay${DELAY}_ft
 
 python -m fairseq_cli.train ${DATA} --user-dir ${USERDIR} \
     -s ${SRC} -t ${TGT} \
-    --train-subset train_distill_zh \
+    --load-pretrained-encoder-from checkpoints/ctc_delay${DELAY}/checkpoint_best.pt \
+    --train-subset train_distill_${TGT} \
     --max-tokens 8000 \
     --update-freq 4 \
     --task translation_infer \
@@ -19,7 +20,6 @@ python -m fairseq_cli.train ${DATA} --user-dir ${USERDIR} \
     --warmup-updates 4000 \
     --max-update 300000 \
     --best-checkpoint-metric bleu --maximize-best-checkpoint-metric \
-    --wandb-project sinkhorn-cwmt \
     --save-dir checkpoints/${TASK} \
     --no-epoch-checkpoints \
     --save-interval-updates 500 \

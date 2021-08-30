@@ -5,7 +5,7 @@ TASK=ctc_delay${DELAY}
 
 python -m fairseq_cli.train ${DATA} --user-dir ${USERDIR} \
     -s ${SRC} -t ${TGT} \
-    --train-subset train_distill_zh \
+    --train-subset train_distill_${TGT} \
     --max-tokens 8000 \
     --update-freq 4 \
     --task translation_infer \

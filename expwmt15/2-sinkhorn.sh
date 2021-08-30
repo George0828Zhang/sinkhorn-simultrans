@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 . ./data_path.sh
 DELAY=$1
-TASK=sinkhorn_delay${DELAY}
+TASK=sinkhorn_delay${DELAY}_ft
 
 python -m fairseq_cli.train ${DATA} --user-dir ${USERDIR} \
     -s ${SRC} -t ${TGT} \
+    --load-pretrained-encoder-from checkpoints/ctc_delay${DELAY}/checkpoint_best.pt \
     --train-subset train_distill_${TGT} \
     --max-tokens 8000 \
     --update-freq 4 \
