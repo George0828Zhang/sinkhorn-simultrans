@@ -7,6 +7,8 @@
 import math
 import logging
 from typing import Dict, List, Optional, Tuple
+from collections import OrderedDict
+import re
 
 import torch
 import torch.nn as nn
@@ -404,6 +406,21 @@ class CausalTransformerEncoder(TransformerEncoder):
         for index, layer in enumerate(self.layers):
             if index < end_id:
                 layer.prune_incremental_state(incremental_state, keep)
+
+    def load_state_dict(self, state_dict, strict=True):
+        """
+        1. remove ``causal_encoder'' from the state_dict keys.
+        2. ignores upsampler and decoder_embed.
+        """
+        changes = re.compile("causal_encoder.")
+        ignores = ["upsampler", "decoder_embed"]
+        new_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            if any([i in k for i in ignores]):
+                continue
+            new_state_dict[changes.sub("", k)] = v
+
+        return super().load_state_dict(new_state_dict, strict=strict)
 
 
 class ASNAugmentedEncoder(FairseqEncoder):
