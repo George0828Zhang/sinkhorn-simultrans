@@ -12,7 +12,6 @@ REF=(
 # Normal
 for DELAY in 1 3 5 7 9; do
     BASELINE="${DIR}/wait_${DELAY}_${SRC}${TGT}_distill.cwmt/prediction"
-    # BASELINE="${DIR}/ctc_delay${DELAY}.cwmt/prediction"
     SYSTEMS=(
         "${DIR}/wait_${DELAY}_${SRC}${TGT}_mon.cwmt/prediction"
         "${DIR}/wait_${DELAY}_${SRC}${TGT}_reorder.cwmt/prediction"
@@ -20,8 +19,8 @@ for DELAY in 1 3 5 7 9; do
         "${DIR}/ctc_delay${DELAY}_mon.cwmt/prediction"
         "${DIR}/ctc_delay${DELAY}_reorder.cwmt/prediction"
         "${DIR}/sinkhorn_delay${DELAY}.cwmt/prediction"
+        "${DIR}/sinkhorn_delay${DELAY}_ft.cwmt/prediction"
     )
-
     OUTPUT=${DIR}/quality-results.cwmt/delay${DELAY}-systems
     mkdir -p $(dirname ${OUTPUT})
     python -m sacrebleu ${REF[@]} -i ${BASELINE} ${SYSTEMS[@]} \
@@ -44,3 +43,20 @@ python -m sacrebleu ${REF[@]} -i ${TEACHER} \
     --tok zh -lc \
     --chrf-lowercase \
     --confidence | tee ${OUTPUT}
+
+# # Ablation
+# BASELINE="${DIR}/sinkhorn_delay3.cwmt/prediction"
+# SYSTEMS=(
+#     "${DIR}/sinkhorn_delay3_unittemp.cwmt/prediction"
+#     "${DIR}/sinkhorn_delay3_nonoise.cwmt/prediction"
+#     "${DIR}/sinkhorn_delay3_softmax.cwmt/prediction"
+# )
+# OUTPUT=${DIR}/quality-results.cwmt/ablation-systems
+# mkdir -p $(dirname ${OUTPUT})
+# python -m sacrebleu ${REF[@]} -i ${BASELINE} ${SYSTEMS[@]} \
+#     --paired-jobs ${WORKERS} \
+#     -m bleu chrf \
+#     --width 2 \
+#     --tok zh -lc \
+#     --chrf-lowercase \
+#     --paired-bs | tee ${OUTPUT}

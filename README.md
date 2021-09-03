@@ -9,6 +9,7 @@ git clone https://github.com/pytorch/fairseq.git
 cd fairseq
 git checkout 8b861be
 python setup.py build_ext --inplace
+pip install .
 ```
 2. (Optional) [Install apex](docs/apex_installation.md) for faster mixed precision (fp16) training.
 3. Install dependencies
@@ -99,6 +100,7 @@ bash 3-causal_ctc.sh ${DELAY}
 
 ## CTC + ASN
 Train our proposed model:
+> **_NOTE:_**  To train from scratch, remove the option `--load-pretrained-encoder-from` in `2-sinkhorn.sh`.
 ```bash
 DELAY=1
 bash 2-sinkhorn.sh ${DELAY}
@@ -107,11 +109,13 @@ bash 2-sinkhorn.sh ${DELAY}
 ## Pseudo Reference
 The following command will generate pseudo reference from wait-9 model:
 ```bash
-bash 5a-decode-monotonic.sh # generate prediction at ./monotonic.results/generate-train.txt
+bash 5a-decode-monotonic.sh
 ```
-Remember to change the paths of `DATA_ROOT`,`FAIRSEQ` and `SCRIPTS` in `5b-create-monotonic.sh` to your paths.
+The prediction will be at `monotonic.results/generate-train.txt`.
+Run the following to generate pseudo reference dataset as `train_monotonic_${TGT}` split:
+> **_NOTE:_** Remember to change the paths of `DATA_ROOT`,`FAIRSEQ` and `SCRIPTS` in `5b-create-monotonic.sh` to your paths.
 ```bash
-bash 5b-create-monotonic.sh # generate pseudo reference dataset as 'train_monotonic_${TGT}' split.
+bash 5b-create-monotonic.sh
 ```
 To train waitk / CTC models with pseudo reference, run
 ```bash
@@ -121,13 +125,16 @@ bash 6b-causal_ctc_monotonic.sh ${DELAY}
 ```
 
 ## Reorder Baseline
-The following command will generate word alignments and reordered target for distill set. Remember to change the path of `PREFIX` in `7a-word-align.sh` to your `cwmt/zh-en/ready/distill_${TGT}` path.
+The following command will generate word alignments and reordered target for distill set. 
+> **_NOTE:_** Remember to change the path of `PREFIX` in `7a-word-align.sh` to your `cwmt/zh-en/ready/distill_${TGT}` path.
 ```bash
-bash 7a-word-align.sh # generate alignments at ./alignments.results/distill_${TGT}.${SRC}-${TGT}
+bash 7a-word-align.sh
 ```
-Remember to change the paths of `DATA_ROOT`,`FAIRSEQ` in `7b-create-reorder.sh` to your paths.
+The alignments will be at `./alignments.results/distill_${TGT}.${SRC}-${TGT}`.
+Run the following to generate reorder dataset as `train_reorder_${TGT}` split:
+> **_NOTE:_** Remember to change the paths of `DATA_ROOT`,`FAIRSEQ` in `7b-create-reorder.sh` to your paths.
 ```bash
-bash 7b-create-reorder.sh # generate reorder dataset as 'train_reorder_${TGT}' split.
+bash 7b-create-reorder.sh
 ```
 To train waitk / CTC models with reorder dataset, run
 ```bash
@@ -216,4 +223,21 @@ cp -r ./imputer-pytorch/torch_imputer  ./                 # copy
 ### Run the Jupyter Notebook
 ```bash
 jupyter notebook visualize_mt.ipynb
+```
+
+## k-Anticipation Rate
+Suppose the test set are in the following path:
+```
+./
+├── test.en
+└── test.zh
+```
+To calculate k-AR, run the following
+```bash
+cd eval/anticipation
+bash run_aligner.sh ./test en zh
+```
+The alignment files will be at `alignments/test.en-zh_1000000`. The k-AR will be printed at stdout. You can calculate k-AR with a specific k by:
+```
+python count_anticipation.py -k ${k} < alignments/test.en-zh_1000000
 ```

@@ -10,7 +10,6 @@ REF=(
 # Normal
 for DELAY in 1 3 5 7 9; do
     BASELINE="${DIR}/wait_${DELAY}_${SRC}${TGT}_distill.wmt15/prediction"
-    # BASELINE="${DIR}/ctc_delay${DELAY}.wmt15/prediction"
     SYSTEMS=(
         "${DIR}/wait_${DELAY}_${SRC}${TGT}_mon.wmt15/prediction"
         "${DIR}/wait_${DELAY}_${SRC}${TGT}_reorder.wmt15/prediction"
@@ -18,6 +17,7 @@ for DELAY in 1 3 5 7 9; do
         "${DIR}/ctc_delay${DELAY}_mon.wmt15/prediction"
         "${DIR}/ctc_delay${DELAY}_reorder.wmt15/prediction"
         "${DIR}/sinkhorn_delay${DELAY}.wmt15/prediction"
+        "${DIR}/sinkhorn_delay${DELAY}_ft.wmt15/prediction"
     )
 
     OUTPUT=${DIR}/quality-results.wmt15/delay${DELAY}-systems
