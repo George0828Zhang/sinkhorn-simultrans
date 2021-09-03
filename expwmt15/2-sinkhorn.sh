@@ -11,8 +11,8 @@ python -m fairseq_cli.train ${DATA} --user-dir ${USERDIR} \
     --update-freq 4 \
     --task translation_infer \
     --inference-config-yaml infer_mt.yaml \
-    --arch sinkhorn_encoder --delay ${DELAY} --mask-ratio 0.67 \
-    --sinkhorn-iters 16 --sinkhorn-tau 0.17 --sinkhorn-noise-factor 0.3 --sinkhorn-bucket-size 1 --sinkhorn-energy dot \
+    --arch sinkhorn_encoder --delay ${DELAY} --mask-ratio 0.5 \
+    --sinkhorn-iters 16 --sinkhorn-tau 0.13 --sinkhorn-noise-factor 0.45 --sinkhorn-bucket-size 1 --sinkhorn-energy dot \
     --criterion label_smoothed_ctc --eos-loss --label-smoothing 0.1 --report-sinkhorn-dist --report-accuracy --decoder-use-ctc \
     --clip-norm 10.0 \
     --weight-decay 0.0001 \
