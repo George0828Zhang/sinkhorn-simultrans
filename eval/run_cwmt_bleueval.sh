@@ -60,3 +60,20 @@ python -m sacrebleu ${REF[@]} -i ${TEACHER} \
 #     --tok zh -lc \
 #     --chrf-lowercase \
 #     --paired-bs | tee ${OUTPUT}
+
+# # Verbose scores
+# OUTDIR=${DIR}/quality-results.cwmt/verbose
+# mkdir -p ${OUTDIR}
+# for DELAY in 1 3 5 7 9; do
+#     SYSTEMS=(
+#         "sinkhorn_delay${DELAY}"
+#         "sinkhorn_delay${DELAY}_ft"
+#     )
+#     for s in "${SYSTEMS[@]}"; do
+#         python -m sacrebleu ${REF[@]} \
+#             -i ${DIR}/${s}.cwmt/prediction \
+#             -m bleu \
+#             --width 2 \
+#             --tok zh -lc | tee ${OUTDIR}/${s}
+#     done
+# done
