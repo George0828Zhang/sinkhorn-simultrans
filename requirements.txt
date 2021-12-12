@@ -8,3 +8,5 @@ tensorboard
 tensorboardX
 wandb
 kaggle
+seaborn
+ninja

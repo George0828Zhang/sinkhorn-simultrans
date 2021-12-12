@@ -545,7 +545,7 @@ class ASNAugmentedEncoder(FairseqEncoder):
         prev_tokens, prev_padding_mask = inject_noise(
             prev_output_tokens,
             self.tgt_dict,
-            ratio=self.mask_ratio,
+            ratio=self.mask_ratio if self.training else 0,
             uniform=self.mask_uniform,
         )
 
