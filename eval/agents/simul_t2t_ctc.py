@@ -467,7 +467,7 @@ class SimulTransTextAgentCTC(TextAgent):
                     best_state = tmp_state
 
             # update lm states
-            if index != tgt_dict.bos():
+            if index != tgt_dict.bos() and index != states.last_token_index:
                 states.lm_states = best_state
 
         return index
