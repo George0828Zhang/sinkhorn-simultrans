@@ -35,6 +35,16 @@ while [[ $# -gt 0 ]]; do
       shift # past argument
       shift # past value
       ;;
+    -l|--lm-path)
+      KENLM="$2"
+      shift # past argument
+      shift # past value
+      ;;
+    -w|--lm-weight)
+      LM_WEIGHT="$2"
+      shift # past argument
+      shift # past value
+      ;;
     *)    # unknown option
       POSITIONAL+=("$1") # save it in an array for later
       shift # past argument
@@ -82,4 +92,6 @@ simuleval \
   --scores \
   --test-waitk ${WAITK} \
   --port ${PORT} \
+  --lm-path ${KENLM} \
+  --lm-weight ${LM_WEIGHT} \
   --workers ${WORKERS}

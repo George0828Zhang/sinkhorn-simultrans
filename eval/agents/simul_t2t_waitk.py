@@ -61,7 +61,11 @@ class SimulTransTextAgentWaitk(TextAgent):
         parser.add_argument("--segment-type", type=str, default="word", choices=["word", "char"],
                             help="Agent can send a word or a char to server at a time.")
         parser.add_argument("--workers", type=int, default=1)
-        # fmt: on
+        # unused for wait-k
+        parser.add_argument('--lm-path', type=str, default="",
+                            help='path to your kenlm model.')
+        parser.add_argument("--lm-weight", type=float, default=0,
+                            help='the log prob is interpolated as: model_logp + lm_weight * lm_logp.')
         return parser
 
     def __init__(self, args):
