@@ -269,7 +269,7 @@ class SinkhornEncoderModel(FairseqEncoderModel):
         # if not from_encoder:
         #     return generate(self, src_tokens, src_lengths, blank_idx=blank_idx)
         logits, extra = self.forward_causal(src_tokens, src_lengths, None)
-        return generate(self, src_tokens, src_lengths, net_output=(logits, extra), blank_idx=blank_idx)
+        return generate(self, src_tokens, src_lengths, net_output=(logits, extra), blank_idx=blank_idx, blank_penalty=2.15)
 
     def max_decoder_positions(self):
         """Used by sequence generator."""
@@ -609,13 +609,13 @@ def sinkhorn_encoder(args):
         args, "encoder_normalize_before", True)
     args.non_causal_layers = getattr(args, "non_causal_layers", 3)
 
-    args.max_source_positions = getattr(args, "max_source_positions", 1024)
+    args.max_source_positions = getattr(args, "max_source_positions", 256)
     args.max_target_positions = getattr(args, "max_target_positions", 1024)
     args.dropout = getattr(args, "dropout", 0.1)
 
     args.share_decoder_input_output_embed = True
 
-    args.upsample_ratio = getattr(args, "upsample_ratio", 2)
+    args.upsample_ratio = getattr(args, "upsample_ratio", 3)
     args.delay = getattr(args, "delay", 1)
 
     base_architecture(args)

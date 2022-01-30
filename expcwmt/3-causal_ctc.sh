@@ -18,7 +18,7 @@ python -m fairseq_cli.train ${DATA} --user-dir ${USERDIR} \
     --warmup-updates 4000 \
     --max-update 300000 \
     --best-checkpoint-metric bleu --maximize-best-checkpoint-metric \
-    --wandb-project sinkhorn-cwmt \
+    --wandb-project sinkhorn-revise \
     --save-dir checkpoints/${TASK} \
     --no-epoch-checkpoints \
     --save-interval-updates 500 \
