@@ -1,5 +1,5 @@
-# Learning to Reorder for Lower Latency Simultaneous Machine Translation
-Implementation of the paper [Learning to Reorder for Lower Latency Simultaneous Machine Translation]() based on fairseq.
+# Anticipation-free Training for Simultaneous Machine Translation
+Implementation of the paper [Anticipation-free Training for Simultaneous Machine Translation](https://arxiv.org/abs/2201.12868) based on fairseq.
 
 ## Setup
 1. Install fairseq
@@ -240,4 +240,24 @@ bash run_aligner.sh ./test en zh
 The alignment files will be at `alignments/test.en-zh_1000000`. The k-AR will be printed at stdout. You can calculate k-AR with a specific k by:
 ```
 python count_anticipation.py -k ${k} < alignments/test.en-zh_1000000
+```
+
+## Citation
+If this repository helps you, please cite the paper as:
+```bibtex
+@article{DBLP:journals/corr/abs-2201-12868,
+  author    = {Chih{-}Chiang Chang and
+               Shun{-}Po Chuang and
+               Hung{-}yi Lee},
+  title     = {Anticipation-free Training for Simultaneous Translation},
+  journal   = {CoRR},
+  volume    = {abs/2201.12868},
+  year      = {2022},
+  url       = {https://arxiv.org/abs/2201.12868},
+  eprinttype = {arXiv},
+  eprint    = {2201.12868},
+  timestamp = {Wed, 02 Feb 2022 15:00:01 +0100},
+  biburl    = {https://dblp.org/rec/journals/corr/abs-2201-12868.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
 ```
