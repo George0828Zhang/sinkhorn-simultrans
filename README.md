@@ -245,19 +245,17 @@ python count_anticipation.py -k ${k} < alignments/test.en-zh_1000000
 ## Citation
 If this repository helps you, please cite the paper as:
 ```bibtex
-@article{DBLP:journals/corr/abs-2201-12868,
-  author    = {Chih{-}Chiang Chang and
-               Shun{-}Po Chuang and
-               Hung{-}yi Lee},
-  title     = {Anticipation-free Training for Simultaneous Translation},
-  journal   = {CoRR},
-  volume    = {abs/2201.12868},
-  year      = {2022},
-  url       = {https://arxiv.org/abs/2201.12868},
-  eprinttype = {arXiv},
-  eprint    = {2201.12868},
-  timestamp = {Wed, 02 Feb 2022 15:00:01 +0100},
-  biburl    = {https://dblp.org/rec/journals/corr/abs-2201-12868.bib},
-  bibsource = {dblp computer science bibliography, https://dblp.org}
+@inproceedings{chang-etal-2022-anticipation,
+    title = "Anticipation-Free Training for Simultaneous Machine Translation",
+    author = "Chang, Chih-Chiang  and
+      Chuang, Shun-Po  and
+      Lee, Hung-yi",
+    booktitle = "Proceedings of the 19th International Conference on Spoken Language Translation (IWSLT 2022)",
+    month = may,
+    year = "2022",
+    address = "Dublin, Ireland (in-person and online)",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2022.iwslt-1.5",
+    pages = "43--61",
 }
 ```
