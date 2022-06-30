@@ -1,5 +1,5 @@
 # Anticipation-free Training for Simultaneous Machine Translation
-Implementation of the paper [Anticipation-free Training for Simultaneous Machine Translation](https://arxiv.org/abs/2201.12868) based on fairseq.
+Implementation of the paper [Anticipation-free Training for Simultaneous Machine Translation](https://arxiv.org/abs/2201.12868). It is based on [fairseq](https://github.com/pytorch/fairseq.git).
 
 ## Setup
 1. Install fairseq
@@ -53,13 +53,13 @@ export SRC=en
 export TGT=zh
 export DATA=/path/to/cwmt/en-zh/data-bin
 
-FAIRSEQ=/path/to/fairseq
+FAIRSEQ=/path/to/fairseq                    # set path to fairseq root
 USERDIR=`realpath ../simultaneous_translation`
 export PYTHONPATH="$FAIRSEQ:$PYTHONPATH"
 
-source ~/envs/fair/bin/activate
+source ~/envs/fair/bin/activate             # activate your virtual environment if any
 ```
-Go into the directories `expcwmt/` or `expwmt15/` to start training models.
+Go into the either  `expcwmt/` or `expwmt15/` directories to start training models.
 > **_NOTE:_**  We will use CWMT as example for the rest of the instructions.
 ## Sequence-Level KD
 We need a full-sentence model as teacher for sequence-KD. 
@@ -78,11 +78,11 @@ To use the distillation data as training set, use/add the command line argument
 --train-subset train_distill_${TGT}
 ```
 
-### Distillation dataset
+<!-- ### Distillation dataset
 We provide our dataset including **distill set, pseudo reference set and reorder set** for easier reproduceability.
 |CWMT En->Zh|WMT15 De->En|
 |-|-|
-|[Download]()|[Download]()|
+|[Download]()|[Download]()| -->
 
 ## Vanilla wait-k
 We can now train vanilla wait-k model as a baseline. To do this, run
@@ -143,104 +143,8 @@ bash 8a-vanilla_wait_k_reorder.sh ${DELAY}
 bash 6b-causal_ctc_reorder.sh ${DELAY}
 ```
 
-## Latency Evaluation (SimulEval)
-Install [SimulEval](docs/extra_installation.md). Then enter the directory `eval/`.
-### full-sentence model
-```bash
-bash simuleval_fullsentence.sh -m teacher_cwmt_enzh -e ../expcwmt -s ./test.en-zh.en -t ./test.en-zh.zh.1
-```
-### wait-k models
-```bash
-bash simuleval.sh \
-    -a agents/simul_t2t_waitk.py \
-    -m wait_1_enzh_distill \
-    -k 1 \
-    -e ../expcwmt \
-    -s test.en-zh.en \
-    -t test.en-zh.zh.1
-```
-### CTC models
-```bash
-bash simuleval.sh \
-    -a agents/simul_t2t_ctc.py \
-    -m ctc_delay3 \
-    -k 3 \
-    -e ../expcwmt \
-    -s test.en-zh.en \
-    -t test.en-zh.zh.1
-```
-### Results
-Results should be under `eval/cwmt_zh-results`. Each subdirectory should contain the following:
-```
-<MODEL>.cwmt/
-├── instances.log
-├── prediction
-└── scores.1
-```
-<!-- └──
-├──
-│    -->
-
-## Quality Evaluation (Sacrebleu 2)
-Install [Sacrebleu 2](docs/extra_installation.md). Then enter the directory `eval/`. You need to run the latency evaluation first to get the `prediction` files necessary for quality evaluation.
-
-You can change the paths of `REF` in `run_cwmt_bleueval.sh` to your reference file paths.
-```bash
-bash run_cwmt_bleueval.sh
-```
-
-### Results
-Results should be under `eval/cwmt_${TGT}-results/quality-results.cwmt`. Directory should contain the following:
-```
-quality-results.cwmt/
-├── delay1-systems
-├── delay3-systems
-├── delay5-systems
-├── delay7-systems
-├── delay9-systems
-└── full_sentence-systems
-```
-
-
-## Visualization
-### Install Chinese-Simplified fonts
-You need to download chinese fonts [Here](https://fonts.google.com/specimen/Noto+Sans+SC#standard-styles) first to display them correctly. Place the `NotoSansSC-Regular.otf` in the `eval/` folder.
-### Install forced alignment
-You need to clone and install [imputer-pytorch](https://github.com/rosinality/imputer-pytorch) to apply ctc forced alignments. 
-1. Clone the repo and install
-```bash
-cd eval/
-git clone https://github.com/rosinality/imputer-pytorch.git
-cd imputer-pytorch
-python setup.py install
-cd ..
-```
-2. Copy (or link) the installation math to `eval/`
-```bash
-cp -r ./imputer-pytorch/torch_imputer  ./                 # copy
-# ln -s ./imputer-pytorch/torch_imputer  torch_imputer    # or use symbolic link
-```
-### Run the Jupyter Notebook
-```bash
-jupyter notebook visualize_mt.ipynb
-```
-
-## k-Anticipation Rate
-Suppose the test set are in the following path:
-```
-./
-├── test.en
-└── test.zh
-```
-To calculate k-AR, run the following
-```bash
-cd eval/anticipation
-bash run_aligner.sh ./test en zh
-```
-The alignment files will be at `alignments/test.en-zh_1000000`. The k-AR will be printed at stdout. You can calculate k-AR with a specific k by:
-```
-python count_anticipation.py -k ${k} < alignments/test.en-zh_1000000
-```
+## Inference Stage
+See [Inference Instructions](docs/inference.md)
 
 ## Citation
 If this repository helps you, please cite the paper as:
